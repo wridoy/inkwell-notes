@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Inkwell Notes</title>
+  <meta name="description" content="Handwritten notes, shapes and live math graphs for PC and tablet.">
+  <meta name="theme-color" content="#2f5d8a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar" aria-label="Notes and folders">
+      <div class="side-head">
+        <div class="brand"><img src="icons/icon.svg" alt=""><span>Inkwell</span></div>
+        <button id="newNoteBtn" class="primary">+ New note</button>
+      </div>
+      <button id="installBtn" class="install" hidden>Install app</button>
+      <input id="search" type="search" placeholder="Search notes" aria-label="Search notes">
+      <div class="section-label">Folders <button id="newFolderBtn" class="mini" title="New folder" aria-label="New folder"></button></div>
+      <ul id="folderList"></ul>
+      <div class="section-label">Notes</div>
+      <ul id="noteList"></ul>
+      <div class="side-foot">
+        <button id="backupBtn" title="Download a backup file of all notes">Back up</button>
+        <label class="btnlike" title="Load notes from a backup or note file">Restore<input id="restoreInput" type="file" accept="application/json,.json" hidden></label>
+      </div>
+    </aside>
+    <div id="backdrop"></div>
+    <main id="main">
+      <header id="topbar">
+        <button id="menuBtn" class="icon" title="Notes list" aria-label="Notes list"></button>
+        <input id="titleInput" placeholder="Title" aria-label="Note title" autocomplete="off">
+        <button id="recState" class="rec-state" title="Stop recording" hidden></button>
+        <span id="saveState" aria-live="polite"></span>
+        <nav id="actions" aria-label="Note actions"></nav>
+      </header>
+      <div id="trashBanner" class="banner" hidden>
+        <span>This note is in the Trash.</span>
+        <button id="restoreNoteBtn">Restore</button>
+        <button id="purgeNoteBtn" class="danger-btn">Delete forever</button>
+      </div>
+      <div id="recBar" hidden></div>
+      <div id="workspace">
+        <div id="stage">
+          <div id="viewport">
+            <div id="scroller">
+              <div id="pageWrap">
+                <canvas id="page"></canvas>
+                <div id="cardLayer"></div>
+              </div>
+            </div>
+            <div id="zoomCtl" role="group" aria-label="Zoom">
+              <button id="zoomInBtn" title="Zoom in (Ctrl +)" aria-label="Zoom in"></button>
+              <button id="zoomLabel" title="Fit page to width (Ctrl 0)">100%</button>
+              <button id="zoomOutBtn" title="Zoom out (Ctrl -)" aria-label="Zoom out"></button>
+            </div>
+            <button id="addPageBtn" title="Add page" aria-label="Add page"></button>
+          </div>
+          <aside id="toolPanel" aria-label="Tool settings"></aside>
+        </div>
+        <nav id="rail" aria-label="Tools"></nav>
+      </div>
+    </main>
+  </div>
+
+  <div id="sorter" class="overlay" hidden>
+    <div class="sorter-box" role="dialog" aria-label="Page sorter">
+      <div class="sorter-head">
+        <strong>Pages</strong>
+        <span class="hint">Tap a page to jump to it.</span>
+        <span class="spacer"></span>
+        <button id="sorterAdd" class="pill">+ Add page</button>
+        <button id="sorterClose" class="icon" title="Close" aria-label="Close"></button>
+      </div>
+      <div id="sorterGrid"></div>
+    </div>
+  </div>
+
+  <input id="imageInput" type="file" accept="image/*" multiple hidden>
+  <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
+  <input id="pdfInput" type="file" accept="application/pdf,.pdf" hidden>
+  <div id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>
