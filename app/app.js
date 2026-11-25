@@ -59,6 +59,9 @@
     trash: 'M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3',
     zoomIn: 'M12 5v14 M5 12h14',
     zoomOut: 'M5 12h14',
+    grid: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
+    sortIcon: 'M4 6h10 M4 12h7 M4 18h4 M18 5v14 M15 16l3 3 3-3',
+    fitWidth: 'M3 5v14 M21 5v14 M7 12h10 M10 9l-3 3 3 3 M14 9l3 3-3 3',
     menu: 'M4 6h16 M4 12h16 M4 18h16',
     plus: 'M12 5v14 M5 12h14',
     minus: 'M5 12h14',
@@ -108,6 +111,8 @@
     indent: 'M11 6h9 M11 10h9 M11 14h9 M4 18h16 M4 8.5l3.5 2.5L4 13.5',
     outdent: 'M11 6h9 M11 10h9 M11 14h9 M4 18h16 M7.5 8.5L4 11l3.5 2.5',
     chevDown: 'M6 9l6 6 6-6',
+    eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6',
+    eyeOff: 'M3 3l18 18 M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.9 M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7c1.9 0 3.5-.6 4.9-1.4 M9.9 9.9a3 3 0 0 0 4.2 4.2',
     lock: 'M6 11h12v9H6z M8.5 11V8a3.5 3.5 0 0 1 7 0v3',
     unlock: 'M6 11h12v9H6z M8.5 11V8a3.5 3.5 0 0 1 6.8-1.2',
     sliders: 'M4 7h9 M17 7h3 M15 5v4 M4 12h3 M11 12h9 M9 10v4 M4 17h11 M19 17h1 M17 15v4',
@@ -119,7 +124,7 @@
   const SHAPES = [['rect', 'Rectangle'], ['ellipse', 'Ellipse'], ['triangle', 'Triangle'], ['diamond', 'Diamond'], ['star', 'Star'], ['line', 'Line'], ['arrow', 'Arrow']];
   const SHAPE_NAMES = { rect: 'rectangle', ellipse: 'ellipse', triangle: 'triangle', diamond: 'diamond', star: 'star', line: 'line', arrow: 'arrow', poly: 'shape' };
   const RAIL = [
-    ['text', 'Text (T)', 'keyboard'], ['pen', 'Pen (P)', 'pen'], ['highlighter', 'Highlighter (H)', 'highlighter'],
+    ['cursor', 'Cursor (K): scroll and use math cards without writing', 'select'], ['text', 'Text (T)', 'keyboard'], ['pen', 'Pen (P)', 'pen'], ['highlighter', 'Highlighter (H)', 'highlighter'],
     ['eraser', 'Eraser (E)', 'eraser'], ['select', 'Lasso select (V)', 'lasso'],
   ];
   const RAIL2 = [['tape', 'Tape (A)', 'tape'], ['restyle', 'Change style (C)', 'restyle'], ['shape', 'Shapes (R)', null], ['math', 'Math & graphs (M)', 'math']];
@@ -186,7 +191,8 @@
 
   /* ---------------- state ---------------- */
   const S = {
-    notes: [], folders: ['Personal', 'School', 'Work'], note: null, folder: 'all', query: '',
+    notes: [], folders: ['Personal', 'School', 'Work'], note: null, folder: prefs.get('view', 'folders'), query: '',
+    sort: Object.assign({ by: 'updated', dir: 'desc' }, prefs.get('sort', {})), openFolders: prefs.get('openFolders', {}),
     tool: prefs.get('tool', 'pen'), shape: prefs.get('shape', 'rect'),
     colors: Object.assign({ pen: '#1c2430', highlighter: '#fff176', text: '#1c2430', shape: '#2f6fd0', tape: '#a6d8f0', restyle: '#d1453b' }, prefs.get('colors', {})),
     widths: Object.assign({ pen: 3, highlighter: 16, shape: 3, eraser: 30, tape: 34, restyle: 4 }, prefs.get('widths', {})),
@@ -360,13 +366,45 @@
   function noteText(n) {
     return [n.title, ...n.objects.filter((o) => o.type === 'text').map((o) => o.text), ...n.cards.flatMap((c) => c.lines), ...(n.recordings || []).map((r) => r.name)].join(' ').toLowerCase();
   }
+  /* ---------------- folders (nested as "Parent/Child" paths) ---------------- */
+  const SYS_VIEWS = ['all', 'fav', 'trash', 'folders'];
+  const parentOf = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
+  const leafOf = (p) => p.slice(p.lastIndexOf('/') + 1);
+  const natCmp = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  // every folder, including parents that only exist because a subfolder names them
+  function folderSet() {
+    const s = new Set();
+    const add = (f) => { while (f && !s.has(f)) { s.add(f); f = parentOf(f); } };
+    S.folders.forEach(add);
+    liveNotes().forEach((n) => add(n.folder));
+    return s;
+  }
+  const isFolder = (p) => typeof p === 'string' && !SYS_VIEWS.includes(p) && folderSet().has(p);
+  const childFolders = (parent, set = folderSet()) => [...set].filter((f) => parentOf(f) === parent).sort(natCmp);
+  const inFolder = (n, p) => n.folder === p || n.folder.startsWith(p + '/');
+  const folderLabel = (p) => p.split('/').join(' › ');
+  const SORTS = [['title', 'Title'], ['created', 'Date created'], ['updated', 'Date modified']];
+  function sortNotes(list) {
+    const by = S.sort.by, dir = S.sort.dir === 'asc' ? 1 : -1;
+    const key = (n) => (by === 'created' ? n.created || n.updated : n.updated);
+    return list.sort((a, b) => dir * (by === 'title' ? natCmp(a.title || 'Untitled', b.title || 'Untitled') : key(a) - key(b)) || b.updated - a.updated);
+  }
   function visibleNotes() {
     const q = S.query.trim().toLowerCase();
     let list;
     if (S.folder === 'trash') list = trashNotes();
-    else list = liveNotes().filter((n) => S.folder === 'all' || (S.folder === 'fav' ? n.fav : n.folder === S.folder));
+    else if (S.folder === 'all') list = liveNotes();
+    else if (S.folder === 'fav') list = liveNotes().filter((n) => n.fav);
+    else if (S.folder === 'folders') list = q ? liveNotes() : [];
+    else list = liveNotes().filter((n) => (q ? inFolder(n, S.folder) : n.folder === S.folder));
     list = list.filter((n) => !q || noteText(n).includes(q));
-    return list.sort((a, b) => (S.folder === 'trash' ? b.trashed - a.trashed : (b.fav ? 1 : 0) - (a.fav ? 1 : 0) || b.updated - a.updated));
+    return sortNotes(list);
+  }
+  function setView(key) {
+    S.folder = key;
+    prefs.set('view', key);
+    if (isFolder(key)) { let p = parentOf(key); while (p) { S.openFolders[p] = true; p = parentOf(p); } prefs.set('openFolders', S.openFolders); }
+    renderSidebar();
   }
   function fmtDate(t) {
     const d = new Date(t), n = new Date();
@@ -384,27 +422,43 @@
   }
 
   function renderSidebar() {
-    const counts = {};
-    liveNotes().forEach((n) => { counts[n.folder] = (counts[n.folder] || 0) + 1; });
+    const set = folderSet();
+    const live = liveNotes();
     el.folderList.innerHTML = '';
-    const mk = (key, label, count, icon) => {
+    const mk = (key, label, count, icon, depth = 0, kids = false) => {
       const li = document.createElement('li');
-      li.className = 'folder' + (S.folder === key ? ' active' : '') + (icon ? ' sys' : '');
+      li.className = 'folder' + (S.folder === key ? ' active' : '') + (icon ? ' sys' : '') + (depth ? ' sub' : '');
+      li.style.setProperty('--d', depth);
+      if (depth) {
+        const tw = document.createElement('button');
+        tw.className = 'twisty' + (kids ? '' : ' none') + (S.openFolders[key] ? ' open' : '');
+        tw.tabIndex = kids ? 0 : -1;
+        tw.setAttribute('aria-label', S.openFolders[key] ? 'Collapse' : 'Expand');
+        tw.innerHTML = kids ? svg(ICON.chevR) : '';
+        tw.onclick = (e) => { e.stopPropagation(); if (!kids) return; S.openFolders[key] = !S.openFolders[key]; prefs.set('openFolders', S.openFolders); renderSidebar(); };
+        li.append(tw);
+      }
       const b = document.createElement('button');
       b.className = 'folder-btn';
-      b.innerHTML = `<span class="fname">${icon ? svg(icon) : ''}<span></span></span><span class="count"></span>`;
+      b.innerHTML = `<span class="fname">${svg(icon || ICON.folder)}<span></span></span><span class="count"></span>`;
       $('.fname span', b).textContent = label;
       $('.count', b).textContent = count;
-      b.onclick = () => { S.folder = key; renderSidebar(); };
+      b.onclick = () => { setView(key); setLibrary(true); if (isNarrow()) setSidebar(false); };
       li.append(b);
       if (!icon && S.folder === key) {
         li.append(iconBtn('', 'Rename folder', ICON.edit, () => renameFolder(key)), iconBtn('danger', 'Delete folder', ICON.trash, () => deleteFolder(key)));
       }
       el.folderList.append(li);
     };
-    mk('all', 'All notes', liveNotes().length, ICON.all);
-    mk('fav', 'Favourites', liveNotes().filter((n) => n.fav).length, ICON.star);
-    S.folders.forEach((f) => mk(f, f, counts[f] || 0));
+    mk('all', 'All notes', live.length, ICON.all);
+    mk('fav', 'Favourites', live.filter((n) => n.fav).length, ICON.star);
+    mk('folders', 'Folders', set.size, ICON.folder);
+    const walk = (parent, depth) => childFolders(parent, set).forEach((f) => {
+      const kids = childFolders(f, set).length > 0;
+      mk(f, leafOf(f), live.filter((n) => inFolder(n, f)).length, null, depth, kids);
+      if (kids && S.openFolders[f]) walk(f, depth + 1);
+    });
+    walk('', 1);
     mk('trash', 'Trash', trashNotes().length, ICON.trash);
 
     el.noteList.innerHTML = '';
@@ -421,7 +475,7 @@
     if (!list.length) {
       const li = document.createElement('li');
       li.className = 'empty';
-      li.textContent = S.query ? 'No notes match your search.' : S.folder === 'trash' ? 'Trash is empty. Deleted notes stay here for 30 days.' : 'No notes here yet.';
+      li.textContent = S.query ? 'No notes match your search.' : S.folder === 'trash' ? 'Trash is empty. Deleted notes stay here for 30 days.' : S.folder === 'folders' ? 'Pick a folder to see its notes.' : 'No notes here yet.';
       el.noteList.append(li);
     }
     list.forEach((n) => {
@@ -434,45 +488,297 @@
       t.append(document.createTextNode(n.title || 'Untitled'));
       const m = document.createElement('span');
       m.className = 'nmeta';
-      m.textContent = n.trashed ? `Deleted ${fmtDate(n.trashed)}` : `${fmtDate(n.updated)} · ${n.folder}`;
+      m.textContent = n.trashed ? `Deleted ${fmtDate(n.trashed)}` : `${fmtDate(n.updated)} · ${folderLabel(n.folder)}`;
       b.append(t, m);
       b.onclick = () => { openNote(n); if (isNarrow()) setSidebar(false); };
       li.append(b);
       el.noteList.append(li);
     });
+    if (libOpen) renderLibrary();
   }
 
-  function newFolder() {
-    const name = (prompt('New folder name') || '').trim();
+  function askFolderName(title, start) {
+    const name = (prompt(title, start || '') || '').trim();
+    if (!name) return '';
+    if (name.includes('/')) { toast('Folder names can\'t contain "/".'); return ''; }
+    if (SYS_VIEWS.includes(name)) { toast('That folder name is reserved.'); return ''; }
+    return name;
+  }
+  // a new folder goes inside the folder being viewed, or at the top level
+  function newFolder(parent) {
+    if (typeof parent !== 'string') parent = isFolder(S.folder) ? S.folder : '';
+    const name = askFolderName(parent ? `New folder inside "${leafOf(parent)}"` : 'New folder name');
     if (!name) return;
-    if (S.folders.includes(name) || ['all', 'fav', 'trash'].includes(name)) { toast('That folder name is already used.'); return; }
-    S.folders.push(name);
+    const path = parent ? `${parent}/${name}` : name;
+    if (folderSet().has(path)) { toast('That folder already exists here.'); return; }
+    S.folders = [...folderSet(), path];
     persistFolders();
-    S.folder = name;
-    renderSidebar();
+    if (parent) { S.openFolders[parent] = true; prefs.set('openFolders', S.openFolders); }
+    if (libOpen) renderSidebar(); else setView(path);
   }
   function renameFolder(old) {
-    const name = (prompt('Rename folder', old) || '').trim();
-    if (!name || name === old) return;
-    if (S.folders.includes(name) || ['all', 'fav', 'trash'].includes(name)) { toast('That folder name is already used.'); return; }
-    S.folders = S.folders.map((f) => (f === old ? name : f));
-    S.notes.forEach((n) => { if (n.folder === old) { n.folder = name; n.updated = now(); persist(n); } });
+    const name = askFolderName('Rename folder', leafOf(old));
+    if (!name || name === leafOf(old)) return;
+    const parent = parentOf(old), path = parent ? `${parent}/${name}` : name;
+    if (folderSet().has(path)) { toast('That folder name is already used here.'); return; }
+    const move = (f) => (f === old ? path : f.startsWith(old + '/') ? path + f.slice(old.length) : f);
+    S.folders = [...folderSet()].map(move);
+    S.notes.forEach((n) => { if (!n.deleted && move(n.folder) !== n.folder) { n.folder = move(n.folder); n.updated = now(); persist(n); } });
+    const open = {};
+    Object.keys(S.openFolders).forEach((k) => { open[move(k)] = S.openFolders[k]; });
+    S.openFolders = open;
+    prefs.set('openFolders', open);
     persistFolders();
-    S.folder = name;
-    renderSidebar();
+    setView(move(S.folder));
   }
   function deleteFolder(name) {
-    if (S.folders.length <= 1) { toast('You need at least one folder.'); return; }
-    const inside = S.notes.filter((n) => !n.deleted && n.folder === name);
-    const target = S.folders.find((f) => f !== name);
-    if (!confirm(inside.length ? `Delete folder "${name}"? Its ${inside.length} note(s) will move to "${target}".` : `Delete folder "${name}"?`)) return;
+    const set = folderSet();
+    const rest = [...set].filter((f) => f !== name && !f.startsWith(name + '/'));
+    if (!rest.length) { toast('You need at least one folder.'); return; }
+    const parent = parentOf(name);
+    const target = parent || rest.filter((f) => !f.includes('/')).sort(natCmp)[0] || rest[0];
+    const inside = S.notes.filter((n) => !n.deleted && inFolder(n, name));
+    const subs = set.size - rest.length - 1;
+    const parts = [];
+    if (subs) parts.push(`Its ${subs} subfolder(s) will be removed.`);
+    if (inside.length) parts.push(`Its ${inside.length} note(s) will move to "${folderLabel(target)}".`);
+    if (!confirm(`Delete folder "${leafOf(name)}"? ${parts.join(' ')}`.trim())) return;
     inside.forEach((n) => { n.folder = target; n.updated = now(); persist(n); });
-    S.folders = S.folders.filter((f) => f !== name);
+    S.folders = rest;
     persistFolders();
-    S.folder = 'all';
+    setView(S.folder === name || inFolder({ folder: S.folder }, name) ? parent || 'folders' : S.folder);
+  }
+  const folderForNew = () => (isFolder(S.folder) ? S.folder : S.note && !S.note.trashed && S.note.folder ? S.note.folder : [...folderSet()].sort(natCmp)[0] || 'Personal');
+
+  /* ---------------- library (home screen: folders and note thumbnails) ---------------- */
+  let libOpen = false;
+  function setLibrary(on) {
+    if (on === libOpen) { if (on) renderLibrary(); return; }
+    libOpen = on;
+    document.body.classList.toggle('lib-open', on);
+    closeMenu();
+    if (on) {
+      closeTextEditor();
+      if (S.panelOpen) setPanel(false);
+      $('#libSearch').value = S.query;
+      renderLibrary();
+    } else if (S.note) {
+      // the page was hidden: size it again now that it shows
+      if (S.autoFit && !S.zoomLock) fitZoom();
+      requestLayout();
+      setTimeout(redrawGraphs, 0);
+    }
+  }
+  function viewTitle(v) {
+    return v === 'all' ? 'All notes' : v === 'fav' ? 'Favourites' : v === 'trash' ? 'Trash' : v === 'folders' ? 'Folders' : leafOf(v);
+  }
+  function renderLibrary() {
+    if (!isFolder(S.folder) && !SYS_VIEWS.includes(S.folder)) S.folder = 'folders';
+    const v = S.folder, q = S.query.trim();
+    $('#libTitle').textContent = viewTitle(v);
+    // breadcrumb: Folders › Course › EEE205
+    const cr = $('#libCrumbs');
+    cr.innerHTML = '';
+    if (isFolder(v)) {
+      const segs = v.split('/');
+      const add = (label, key) => {
+        const b = document.createElement('button');
+        b.textContent = label;
+        b.onclick = () => setView(key);
+        cr.append(b, Object.assign(document.createElement('span'), { textContent: '›' }));
+      };
+      add('Folders', 'folders');
+      segs.slice(0, -1).forEach((s, i) => add(s, segs.slice(0, i + 1).join('/')));
+    }
+    cr.hidden = !cr.childElementCount;
+    $('#libNewFolder').hidden = !(v === 'folders' || isFolder(v));
+    $('#libEmptyTrash').hidden = !(v === 'trash' && trashNotes().length);
+    $('#libCreate').hidden = v === 'trash';
+    $('#libImport').hidden = v === 'trash';
+    $('#libBack').hidden = !S.note;
+    $('#libSortLabel').textContent = SORTS.find((s) => s[0] === S.sort.by)[1];
+    const dir = $('#libDir');
+    dir.innerHTML = svg(S.sort.dir === 'asc' ? ICON.up : ICON.down);
+    dir.title = S.sort.dir === 'asc' ? 'Ascending (tap for descending)' : 'Descending (tap for ascending)';
+    dir.setAttribute('aria-label', dir.title);
+
+    // folder tiles
+    const fw = $('#libFolders');
+    fw.innerHTML = '';
+    const set = folderSet();
+    let tiles = [];
+    if (!q && (v === 'folders' || isFolder(v))) {
+      tiles = childFolders(v === 'folders' ? '' : v, set);
+      if (S.sort.by === 'title' && S.sort.dir === 'desc') tiles.reverse();
+    }
+    const live = liveNotes();
+    tiles.forEach((f) => {
+      const t = document.createElement('div');
+      t.className = 'ftile';
+      t.tabIndex = 0;
+      t.setAttribute('role', 'button');
+      const nNotes = live.filter((n) => inFolder(n, f)).length, nSubs = childFolders(f, set).length;
+      t.title = `${nNotes} note(s)${nSubs ? `, ${nSubs} folder(s)` : ''}`;
+      t.innerHTML = '<i class="ftab"></i><span class="fcount"></span><span class="fname2"></span>';
+      $('.fcount', t).textContent = nNotes;
+      $('.fname2', t).textContent = leafOf(f);
+      const more = iconBtn('fmore dots-icon', 'Folder options', ICON.more, () => openMenu(more, (m) => folderMenu(m, f)));
+      t.append(more);
+      t.onclick = () => setView(f);
+      t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView(f); } };
+      t.oncontextmenu = (e) => { e.preventDefault(); openMenu(more, (m) => folderMenu(m, f)); };
+      fw.append(t);
+    });
+    fw.hidden = !tiles.length;
+
+    // note grid
+    const grid = $('#libGrid');
+    grid.innerHTML = '';
+    const list = visibleNotes();
+    list.forEach((n) => grid.append(noteTile(n)));
+    const empty = $('#libEmpty');
+    empty.hidden = !!(list.length || tiles.length);
+    empty.textContent = q ? 'No notes match your search.'
+      : v === 'trash' ? 'Trash is empty. Deleted notes stay here for 30 days.'
+        : v === 'fav' ? 'No favourites yet. Tap the star on a note to add it here.'
+          : v === 'folders' ? 'No folders yet. Tap "New folder" to make one.'
+            : 'This folder is empty. Tap "Create note" to add one.';
+    queueThumbs();
+  }
+  function noteTile(n) {
+    const t = document.createElement('div');
+    t.className = 'ntile' + (S.note === n ? ' current' : '');
+    t.tabIndex = 0;
+    t.setAttribute('role', 'button');
+    t.dataset.id = n.id;
+    t.innerHTML = '<div class="thumb"><img alt=""></div><div class="ncap"><span class="ntitle2"></span><span class="ndate"></span></div>';
+    $('.ntitle2', t).textContent = (n.fav ? '★ ' : '') + (n.title || 'Untitled');
+    const d = n.trashed ? n.trashed : S.sort.by === 'created' ? n.created || n.updated : n.updated;
+    $('.ndate', t).textContent = (n.trashed ? 'Deleted ' : '') + fmtDate(d) + (S.folder === 'all' || S.folder === 'fav' || S.query.trim() ? ` · ${leafOf(n.folder)}` : '');
+    const cached = thumbs.get(n.id);
+    if (cached && cached.key === thumbKey(n)) $('img', t).src = cached.url;
+    const more = iconBtn('nmore dots-icon', 'Note options', ICON.more, () => openMenu(more, (m) => noteMenu(m, n)));
+    $('.thumb', t).append(more);
+    const open = () => { if (n.trashed) { openMenu(more, (m) => noteMenu(m, n)); return; } openNote(n); };
+    t.onclick = open;
+    t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+    t.oncontextmenu = (e) => { e.preventDefault(); openMenu(more, (m) => noteMenu(m, n)); };
+    return t;
+  }
+  function folderMenu(m, f) {
+    mItem(m, 'Open', ICON.folder, () => setView(f));
+    mItem(m, 'New folder inside', ICON.plus, () => newFolder(f));
+    mItem(m, 'Rename', ICON.edit, () => renameFolder(f));
+    mSep(m);
+    mItem(m, 'Delete folder', ICON.trash, () => deleteFolder(f), 'danger');
+  }
+  function noteMenu(m, n) {
+    if (n.trashed) {
+      mItem(m, 'Restore', ICON.undo, () => libRestore(n));
+      mItem(m, 'Delete forever', ICON.trash, () => libPurge(n), 'danger');
+      return;
+    }
+    mItem(m, 'Open', ICON.file, () => openNote(n));
+    mItem(m, n.fav ? 'Remove from favourites' : 'Add to favourites', ICON.star, () => { n.fav = !n.fav; n.updated = now(); persist(n); if (n === S.note) updateFav(); renderSidebar(); });
+    mItem(m, 'Rename', ICON.edit, () => {
+      const t = prompt('Rename note', n.title || '');
+      if (t == null) return;
+      n.title = t.trim();
+      n.updated = now();
+      persist(n);
+      if (n === S.note) el.title.value = n.title;
+      renderSidebar();
+    });
+    mItem(m, 'Move to folder…', ICON.folder, () => setTimeout(() => openMoveMenu(n), 0));
+    mSep(m);
+    mItem(m, 'Move to Trash', ICON.trash, () => libTrash(n), 'danger');
+  }
+  function openMoveMenu(n) {
+    const anchor = $(`.ntile[data-id="${n.id}"] .nmore`) || $('#libTitle');
+    openMenu(anchor, (m) => {
+      mLabel(m, `Move "${n.title || 'Untitled'}" to`);
+      const set = folderSet();
+      const walk = (parent, depth) => childFolders(parent, set).forEach((f) => {
+        const b = mItem(m, leafOf(f), ICON.folder, () => {
+          n.folder = f;
+          n.updated = now();
+          persist(n);
+          renderSidebar();
+          toast(`Moved to ${folderLabel(f)}`);
+        }, n.folder === f ? 'on' : '');
+        b.style.paddingLeft = 10 + depth * 16 + 'px';
+        walk(f, depth + 1);
+      });
+      walk('', 0);
+      m.classList.add('scroll');
+    });
+  }
+  // Trash and restore from the library without leaving it
+  function libTrash(n) {
+    if (rec && rec.note === n) rec.mr.stop();
+    n.trashed = now();
+    n.updated = now();
+    persist(n);
+    if (n === S.note) { openNextAfter(n); setLibrary(true); }
+    renderSidebar();
+    toast('Moved to Trash', 2500);
+  }
+  function libRestore(n) {
+    n.trashed = 0;
+    n.updated = now();
+    persist(n);
+    renderSidebar();
+    toast(`Restored to ${folderLabel(n.folder)}`);
+  }
+  async function libPurge(n) {
+    await purgeNote(n, true);
+    setLibrary(true);
     renderSidebar();
   }
-  const folderForNew = () => (S.folders.includes(S.folder) ? S.folder : S.note && !S.note.trashed ? S.note.folder : S.folders[0]);
+
+  // thumbnails: the top of the first page, drawn once per version of the note
+  const thumbs = new Map();
+  const thumbKey = (n) => `${n.updated}|${n.paper}|${n.bg}`;
+  let thumbBusy = false;
+  async function queueThumbs() {
+    if (thumbBusy) return;
+    thumbBusy = true;
+    try {
+      for (;;) {
+        if (!libOpen) break;
+        const tile = [...document.querySelectorAll('#libGrid .ntile')].find((t) => {
+          const n = S.notes.find((x) => x.id === t.dataset.id);
+          const c = n && thumbs.get(n.id);
+          return n && !(c && c.key === thumbKey(n) && $('img', t).src);
+        });
+        if (!tile) break;
+        const n = S.notes.find((x) => x.id === tile.dataset.id);
+        const key = thumbKey(n);
+        let c = thumbs.get(n.id);
+        if (!c || c.key !== key) {
+          await ensureImages(n).catch(() => {});
+          c = { key, url: drawThumb(n) };
+          thumbs.set(n.id, c);
+        }
+        document.querySelectorAll(`#libGrid .ntile[data-id="${n.id}"] img`).forEach((im) => { im.src = c.url; });
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    } finally { thumbBusy = false; }
+  }
+  function drawThumb(n) {
+    const px = 360, cv = document.createElement('canvas');
+    cv.width = px;
+    cv.height = px;
+    const g = cv.getContext('2d');
+    const s = px / PAGE_W;
+    g.setTransform(s, 0, 0, s, 0, 0);
+    const prevDark = paperDark;
+    try {
+      drawNoteTo(g, n, 0, PAGE_W, 3, false);
+    } catch (e) { /* a damaged note still gets a blank tile */ }
+    paperDark = prevDark;
+    return cv.toDataURL('image/png');
+  }
   function newNote() {
     const n = makeNote('', folderForNew());
     if (S.folder === 'fav') n.fav = true;
@@ -503,7 +809,6 @@
     n.trashed = 0;
     n.updated = now();
     persist(n);
-    if (!S.folders.includes(n.folder)) { n.folder = S.folders[0]; }
     S.folder = 'all';
     openNote(n);
     toast('Note restored');
@@ -530,6 +835,7 @@
     toast('Trash emptied');
   }
   function openNote(n) {
+    if (libOpen) { libOpen = false; document.body.classList.remove('lib-open'); }
     closeTextEditor();
     closeMenu();
     normalizeNote(n);
@@ -601,6 +907,49 @@
     S.zoom = clamp(avail / PAGE_W, 0.3, 1.5);
     S.autoFit = true;
     applyZoomSize();
+  }
+  // the page fills the window's width exactly (no upper cap, unlike the automatic fit)
+  function fitWidth() {
+    if (S.zoomLock) { toast('Zoom is locked. Tap the zoom lock button to unlock it.'); return; }
+    const avail = el.scroller.clientWidth - (isNarrow() ? 24 : 48);
+    const sr = el.scroller.getBoundingClientRect();
+    setZoom(avail / PAGE_W, sr.left, sr.top + sr.height / 2);
+    S.autoFit = true;
+    el.scroller.scrollLeft = 0;
+    layoutCanvas();
+  }
+  // tap the % to type an exact zoom
+  function editZoom() {
+    const lab = $('#zoomLabel');
+    if (S.zoomLock) { toast('Zoom is locked. Tap the zoom lock button to unlock it.'); return; }
+    if ($('#zoomInput')) return;
+    const inp = document.createElement('input');
+    inp.id = 'zoomInput';
+    inp.type = 'text';
+    inp.inputMode = 'numeric';
+    inp.setAttribute('aria-label', 'Zoom percent (25 to 400)');
+    inp.value = String(Math.round(S.zoom * 100));
+    lab.hidden = true;
+    lab.after(inp);
+    inp.focus();
+    inp.select();
+    let done = false;
+    const finish = (apply) => {
+      if (done) return;
+      done = true;
+      const v = parseFloat(inp.value.replace(',', '.'));
+      inp.remove();
+      lab.hidden = false;
+      if (!apply) return;
+      if (!isFinite(v) || v <= 0) { toast('Type a zoom between 25 and 400.'); return; }
+      setZoom(clamp(v, 25, 400) / 100);
+    };
+    inp.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    inp.addEventListener('blur', () => finish(true));
   }
   function setZoom(z, cx, cy) {
     if (S.zoomLock) return;
@@ -794,9 +1143,9 @@
     return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
   }
   // Ink that would vanish on the current paper is shown in the opposite tone, like dark-mode notebooks do.
-  let paperDark = false;
+  let paperDark = false, onCard = false;
   function ink(c) {
-    if (paperDark && lum(c) < 0.2) return '#e9edf2';
+    if (paperDark && !onCard && lum(c) < 0.2) return '#e9edf2';
     if (!paperDark && lum(c) > 0.94) return '#1c2430';
     return c;
   }
@@ -1142,12 +1491,41 @@
     c.textBaseline = 'middle';
     c.fillText(im._state === 'loading' ? 'Loading…' : 'Image unavailable', o.x + o.w / 2, o.y + o.h / 2);
   }
-  function drawObj(c, o) {
+  function drawObjRaw(c, o) {
     c.save();
     if (o.type === 'stroke') drawStroke(c, o);
     else if (o.type === 'shape') drawShape(c, o);
     else if (o.type === 'text') drawText(c, o);
     else if (o.type === 'image') drawImageObj(c, o);
+    c.restore();
+  }
+  // math cards that overlap a box, as page rectangles
+  let cardsLive = true; // false while drawing a note that isn't open (its cards aren't on screen)
+  function cardRectsOver(b) {
+    const out = [];
+    if (!S.note || !cardsLive) return out;
+    for (const ce of cardEls.values()) {
+      const x = ce.card.x, y = ce.card.y, w = ce.root.offsetWidth, h = ce.root.offsetHeight;
+      if (w && h && !(b.x > x + w || b.y > y + h || b.x + b.w < x || b.y + b.h < y)) out.push({ x, y, w, h });
+    }
+    return out;
+  }
+  function drawObj(c, o) {
+    // math cards are always white, so on dark paper ink lying over a card keeps its real colour there
+    const rects = paperDark && !o.locked && o.type !== 'image' ? cardRectsOver(bbox(o)) : [];
+    if (!rects.length) { drawObjRaw(c, o); return; }
+    const cardPath = () => { c.beginPath(); rects.forEach((r) => { c.moveTo(r.x + 12, r.y); c.arcTo(r.x + r.w, r.y, r.x + r.w, r.y + r.h, 12); c.arcTo(r.x + r.w, r.y + r.h, r.x, r.y + r.h, 12); c.arcTo(r.x, r.y + r.h, r.x, r.y, 12); c.arcTo(r.x, r.y, r.x + r.w, r.y, 12); c.closePath(); }); };
+    c.save();
+    cardPath();
+    c.rect(-1e5, -1e5, 2e5, 2e5);
+    c.clip('evenodd');
+    drawObjRaw(c, o);
+    c.restore();
+    c.save();
+    cardPath();
+    c.clip();
+    onCard = true;
+    try { drawObjRaw(c, o); } finally { onCard = false; }
     c.restore();
   }
   function drawSelection(c) {
@@ -1268,7 +1646,7 @@
     capture(el.cv, e);
     const cp = pagePt(e);
     if ((S.reading || ['text', 'select', 'pen'].includes(S.tool)) && toggleCheckAt(cp)) { e.preventDefault(); return; }
-    if (S.reading) {
+    if (S.reading || S.tool === 'cursor') {
       action = { pointerId: e.pointerId, mode: 'pan', sx: e.clientX, sy: e.clientY, sl: el.scroller.scrollLeft, st: el.scroller.scrollTop, start: cp };
       return;
     }
@@ -1916,6 +2294,20 @@
       if (n.k === 'var') return n.v === name;
       return [n.a, n.b, ...(n.args || [])].some((c) => uses(c, name));
     };
+    // names in a line that nothing defines; "fx" with x known counts as f times x, so only f is missing
+    function missingNames(body, kind) {
+      const out = [];
+      const add = (n) => { if (!out.includes(n)) out.push(n); };
+      let toks;
+      try { toks = tokenize(body); } catch (e) { return out; }
+      for (const t of toks) {
+        if (t.t !== 'id' || kind(t.v)) continue;
+        const chars = [...t.v];
+        if (t.v.length > 1 && chars.every((ch) => /[A-Za-z]/.test(ch)) && chars.some((ch) => kind(ch) && kind(ch) !== 'func')) chars.filter((ch) => !kind(ch)).forEach(add);
+        else add(t.v);
+      }
+      return out.filter((n) => /^[A-Za-z]\w*$/.test(n) && !reserved(n));
+    }
     const isLiteral = (n) => n.k === 'num' || (n.k === 'neg' && n.a.k === 'num');
     const reserved = (name) => name in CONST || !!BUILTIN[name] || name === 'x' || name === 'y';
     function prep(raw) {
@@ -1960,10 +2352,14 @@
         return null;
       };
       for (const it of items) {
+        const kind = kindOf(it.kind === 'funcdef' ? it.param : 'x');
         try {
-          if (it.kind === 'funcdef') it.ast = parse(it.body, { kind: kindOf(it.param) });
-          else if (['plot', 'assign', 'expr', 'vline'].includes(it.kind)) { it.ast = parse(it.body, { kind: kindOf('x') }); it.usesX = uses(it.ast, 'x'); }
-        } catch (e) { Object.assign(it, { kind: 'error', err: e.message }); }
+          if (it.kind === 'funcdef') it.ast = parse(it.body, { kind });
+          else if (['plot', 'assign', 'expr', 'vline'].includes(it.kind)) { it.ast = parse(it.body, { kind }); it.usesX = uses(it.ast, 'x'); }
+        } catch (e) {
+          const missing = /^Unknown name/.test(e.message) ? missingNames(it.body, kind) : [];
+          Object.assign(it, { kind: 'error', err: e.message, missing: missing.length ? missing : null });
+        }
       }
       for (const it of items) if (it.kind === 'assign' && it.usesX) { it.kind = 'plot'; userVars.delete(it.name); }
       let depth = 0;
@@ -1993,7 +2389,7 @@
         try {
           switch (it.kind) {
             case 'empty': info = { kind: 'empty' }; break;
-            case 'error': info = { kind: 'error', err: it.err }; break;
+            case 'error': info = { kind: 'error', err: it.err, missing: it.missing || null }; break;
             case 'funcdef': { const f = env.funcs[it.name]; info = { kind: 'plot', fn: plotFn((sc) => f(sc.x)) }; break; }
             case 'plot': info = { kind: 'plot', fn: plotFn(compile(it.ast, env)) }; break;
             case 'vline': info = { kind: 'vline', x: compile(it.ast, env)(null) }; break;
@@ -2049,7 +2445,7 @@
   }
   function rowHtml(i) {
     const ph = i === 0 ? 'y = x^2   or   a = 3   or   12*4 =' : '';
-    return `<div class="mline"><span class="mdot"></span><input class="min" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="${ph}" aria-label="Math line"><span class="mres"></span></div><div class="mslider" hidden><span class="smin"></span><input type="range" aria-label="Value"><span class="smax"></span></div>`;
+    return `<div class="mline"><span class="mdot"></span><input class="min" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="${ph}" aria-label="Math line"><button type="button" class="mlim" hidden></button><span class="mres"></span></div><div class="mslider" hidden><span class="smin"></span><input type="range" aria-label="Value"><span class="smax"></span></div><div class="madd" hidden></div>`;
   }
   function buildRows(ce) {
     ce.rows.innerHTML = '';
@@ -2070,6 +2466,7 @@
     root.style.top = c.y + 'px';
     root.style.width = c.w + 'px';
     root.innerHTML = `<div class="mhead"><span class="mgrip">${svg(ICON.grip)}</span><span>Math</span><span class="mspacer"></span>`
+      + `<button class="mbtn" data-a="eq" title="Hide equations" aria-label="Hide equations" aria-pressed="false">${svg(ICON.eye)}</button>`
       + `<button class="mbtn" data-a="out" title="Zoom graph out" aria-label="Zoom graph out">${svg(ICON.minus)}</button>`
       + `<button class="mbtn" data-a="in" title="Zoom graph in" aria-label="Zoom graph in">${svg(ICON.plus)}</button>`
       + `<button class="mbtn" data-a="home" title="Reset graph view" aria-label="Reset graph view">${svg(ICON.home)}</button>`
@@ -2083,6 +2480,7 @@
     gopts(c);
     buildGraphSettings(ce);
     updateLockBtn(ce);
+    updateEqBtn(ce);
     cardEls.set(c.id, ce);
     buildRows(ce);
     wireCard(ce);
@@ -2133,7 +2531,7 @@
         root.style.top = card.y + 'px';
         const mx = card.x - ox, my = card.y - oy;
         riders.forEach(({ o, orig }) => Object.assign(o, mapPts(clone(orig), (x, y) => [x + mx, y + my])));
-        if (riders.length) requestRender();
+        requestRender(); // ink over the card changes tone as the card moves
       }, () => {
         if (!moved) return;
         pushHistory(snap);
@@ -2150,6 +2548,13 @@
         S.note.cards.splice(S.note.cards.indexOf(card), 1);
         touchNote();
         renderCards();
+        return;
+      }
+      if (a === 'eq') {
+        card.opts.hideEq = !card.opts.hideEq;
+        updateEqBtn(ce);
+        touchNote();
+        requestRender();
         return;
       }
       if (a === 'lock') {
@@ -2180,6 +2585,7 @@
         root.style.width = card.w + 'px';
         ce.graphBox.style.height = card.gh + 'px';
         drawGraph(ce);
+        requestRender();
       }, () => { pushHistory(snap); touchNote(); });
     });
     ce.rows.addEventListener('focusin', (e) => {
@@ -2203,6 +2609,15 @@
       updateMath();
     });
     ce.rows.addEventListener('click', (e) => {
+      const lim = e.target.closest('.mlim');
+      if (lim) {
+        const i = rowIndex(ce, lim);
+        if (i < 0) return;
+        openLinePop(ce, i, ce.rows.children[i]);
+        const f = $('.lpop .lpop-x input', ce.root);
+        if (f) f.focus();
+        return;
+      }
       const d = e.target.closest('.mdot.on');
       if (!d) return;
       const i = rowIndex(ce, d);
@@ -2249,21 +2664,50 @@
       let ci = 0;
       [...ce.rows.children].forEach((row, i) => {
         const info = rows[i] || { kind: 'empty' };
-        const dot = $('.mdot', row), out = $('.mres', row), sl = $('.mslider', row);
-        const isErr = info.kind === 'error';
+        const dot = $('.mdot', row), out = $('.mres', row), sl = $('.mslider', row), add = $('.madd', row);
+        const missing = info.kind === 'error' && info.missing;
+        const isErr = info.kind === 'error' && !missing;
         row.classList.toggle('err', isErr);
+        add.hidden = !missing;
+        const sig = missing ? missing.join(',') : '';
+        if (add._sig !== sig) {
+          add._sig = sig;
+          add.innerHTML = '';
+          if (missing) {
+            add.append(Object.assign(document.createElement('span'), { className: 'madd-label', textContent: 'add slider:' }));
+            const btn = (label, names, cls) => {
+              const b = document.createElement('button');
+              b.type = 'button';
+              b.className = 'madd-btn' + (cls ? ' ' + cls : '');
+              b.textContent = label;
+              b.title = names.length > 1 ? `Add sliders for ${names.join(', ')}` : `Add a slider for ${names[0]}`;
+              b.onclick = (e) => { e.stopPropagation(); addSliders(ce, rowIndex(ce, b), names); };
+              add.append(b);
+            };
+            missing.forEach((n) => btn(n, [n]));
+            if (missing.length > 1) btn('all', missing, 'all');
+          }
+        }
         let color = null;
         const ls = lineStyleOf(ce.card, i);
         if (info.kind === 'plot' || info.kind === 'vline') {
           color = (ls && ls.color) || GRAPH_COLORS[ci % GRAPH_COLORS.length];
           ci++;
-          ce.plots.push(Object.assign({ color, idx: i, width: (ls && ls.width) || 2.5, dash: (ls && ls.dash) || 'solid', hidden: !!(ls && ls.hidden) }, info));
+          ce.plots.push(Object.assign({ color, idx: i, width: (ls && ls.width) || 2.5, dash: (ls && ls.dash) || 'solid', hidden: !!(ls && ls.hidden), xlo: limOf(ls, 'xmin'), xhi: limOf(ls, 'xmax') }, info));
+        }
+        const lim = $('.mlim', row);
+        lim.hidden = info.kind !== 'plot';
+        if (!lim.hidden) {
+          const lo = limOf(ls, 'xmin'), hi = limOf(ls, 'xmax'), set = lo != null || hi != null;
+          lim.classList.toggle('set', set);
+          lim.textContent = !set ? 'x-limit' : lo != null && hi != null ? `${fmtNum(lo)} ≤ x ≤ ${fmtNum(hi)}` : lo != null ? `x ≥ ${fmtNum(lo)}` : `x ≤ ${fmtNum(hi)}`;
+          lim.title = set ? 'Change where this graph starts and stops' : 'Only draw this graph between two x values';
         }
         dot.style.background = color && !(ls && ls.hidden) ? color : 'transparent';
         dot.style.borderColor = color && ls && ls.hidden ? color : '';
         dot.classList.toggle('on', !!color);
         dot.title = color ? 'Line colour and style' : '';
-        out.textContent = isErr ? info.err : info.text || '';
+        out.textContent = isErr ? info.err : missing ? '' : info.text || '';
         out.title = isErr ? info.err : '';
         if (info.kind === 'var' && info.literal) {
           sl.hidden = false;
@@ -2289,11 +2733,27 @@
       ce.graphBox.hidden = !ce.plots.length;
       if (ce.plots.length) drawGraph(ce);
     }
+    if (paperDark) requestRender(); // a card that grew or shrank changes which ink sits on it
+  }
+
+  // new "name = 1" lines go right under the line that needs them, each with its own slider
+  function addSliders(ce, i, names) {
+    const c = ce.card;
+    if (i < 0) return;
+    pushHistory();
+    const lines = names.map((n) => `${n} = 1`);
+    c.lines.splice(i + 1, 0, ...lines);
+    if (c.lstyle) c.lstyle.splice(i + 1, 0, ...lines.map(() => null));
+    buildRows(ce);
+    updateMath();
+    touchNote();
+    autoGrow(c.y + ce.root.offsetHeight);
   }
 
   /* per-line graph style: colour, thickness, line style, show/hide */
   const LINE_COLORS = ['#d1453b', '#2f6fd0', '#2e9d57', '#e8743b', '#7b4fd6', '#1c2430', '#0f9fa8', '#e85a8c'];
   const lineStyleOf = (card, i) => (card.lstyle && card.lstyle[i]) || null;
+  const limOf = (ls, k) => (ls && typeof ls[k] === 'number' && Number.isFinite(ls[k]) ? ls[k] : null);
   function setLineStyle(ce, i, patch) {
     const c = ce.card;
     c.lstyle = c.lstyle || [];
@@ -2350,7 +2810,33 @@
       b.onclick = () => { sw.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); setLineStyle(ce, i, { color: col }); };
       sw.append(b);
     });
-    pop.append(head, mid, sw);
+    const xr = document.createElement('div');
+    xr.className = 'lpop-x';
+    xr.innerHTML = '<span>x from</span><input type="text" inputmode="decimal" placeholder="−∞" aria-label="Start graph at x"><span>to</span><input type="text" inputmode="decimal" placeholder="∞" aria-label="Stop graph at x"><button type="button" class="lpop-clear" title="No x limit">Clear</button>';
+    const [xa, xb] = xr.querySelectorAll('input');
+    const lo0 = limOf(st, 'xmin'), hi0 = limOf(st, 'xmax');
+    xa.value = lo0 == null ? '' : fmtNum(lo0);
+    xb.value = hi0 == null ? '' : fmtNum(hi0);
+    // accepts plain numbers and simple expressions like pi/2 or 2*pi
+    const readX = (inp) => {
+      const t = inp.value.trim();
+      if (!t) return { ok: true, v: null };
+      const r = MathEngine.analyze([{ id: 't', lines: [t] }]).get('t')[0];
+      const v = r && (r.kind === 'value' || r.kind === 'expr') ? r.value : Number(t.replace(',', '.'));
+      return Number.isFinite(v) ? { ok: true, v } : { ok: false };
+    };
+    const applyX = () => {
+      const a = readX(xa), b = readX(xb);
+      xa.classList.toggle('bad', !a.ok);
+      xb.classList.toggle('bad', !b.ok);
+      if (!a.ok || !b.ok) return;
+      setLineStyle(ce, i, { xmin: a.v, xmax: b.v });
+    };
+    xa.oninput = applyX;
+    xb.oninput = applyX;
+    [xa, xb].forEach((inp) => inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter' || e.key === 'Escape') pop.remove(); }));
+    $('.lpop-clear', xr).onclick = () => { xa.value = ''; xb.value = ''; applyX(); };
+    pop.append(head, mid, sw, xr);
     ce.root.append(pop);
     pop.style.top = (ce.rows.offsetTop + row.offsetTop + row.offsetHeight) + 'px';
     setTimeout(() => {
@@ -2369,7 +2855,7 @@
     const dec = Math.max(0, -Math.floor(Math.log10(step)));
     return String(Number(v.toFixed(Math.min(dec, 10))));
   }
-  const GRAPH_DEF = { grid: true, minor: true, numbers: true, arrows: true, arrowBoth: false, xAxis: true, yAxis: true, xLabel: '', yLabel: '', xStep: 0, yStep: 0, lock: false };
+  const GRAPH_DEF = { grid: true, minor: true, numbers: true, arrows: true, arrowBoth: false, xAxis: true, yAxis: true, xLabel: '', yLabel: '', xStep: 0, yStep: 0, lock: false, tickSize: 12 };
   const gopts = (c) => (c.opts = Object.assign({}, GRAPH_DEF, c.opts || {}));
   // the x and y axes can have different scales (pixels per unit)
   const scales = (v) => ({ sx: v.s, sy: v.sy || v.s });
@@ -2429,7 +2915,10 @@
       if (showX) { drawArrow(g, W - 1.5, y0, 0); if (o.arrowBoth) drawArrow(g, 1.5, y0, Math.PI); }
       if (showY) { drawArrow(g, x0, 1.5, -Math.PI / 2); if (o.arrowBoth) drawArrow(g, x0, H - 1.5, Math.PI / 2); }
     }
-    g.font = `11px ${FONT}`;
+    // axis numbers: black, in the size chosen in graph settings
+    const ts = clamp(Number(o.tickSize) || 12, 8, 28);
+    g.font = `${ts}px ${FONT}`;
+    g.fillStyle = '#000';
     if (o.numbers) {
       if (o.xAxis) {
         g.textAlign = 'center';
@@ -2462,9 +2951,13 @@
         continue;
       }
       let pen = false, prevY = 0;
-      const N = Math.ceil(W * 2);
+      let lo = pl.xlo != null ? pl.xlo : -Infinity, hi = pl.xhi != null ? pl.xhi : Infinity;
+      if (lo > hi) [lo, hi] = [hi, lo];
+      const a = Math.max(xmin, lo), b = Math.min(xmax, hi);
+      if (!(a <= b)) continue;
+      const N = Math.max(1, Math.ceil((b - a) * sx * 2));
       for (let i = 0; i <= N; i++) {
-        const px = i / 2, wx = xmin + px / sx;
+        const wx = a + ((b - a) * i) / N, px = X(wx);
         let wy;
         try { wy = pl.fn(wx); } catch (_) { wy = NaN; }
         if (typeof wy !== 'number' || !Number.isFinite(wy)) { pen = false; continue; }
@@ -2502,6 +2995,17 @@
     if (v.sy) v.sy = clamp(v.sy * f, 0.02, 50000);
     drawGraph(ce);
     touchNote();
+  }
+  function updateEqBtn(ce) {
+    const b = ce.root.querySelector('.mbtn[data-a="eq"]');
+    if (!b) return;
+    const hide = !!ce.card.opts.hideEq;
+    ce.rows.hidden = hide;
+    b.innerHTML = svg(hide ? ICON.eyeOff : ICON.eye);
+    b.classList.toggle('on', hide);
+    b.title = hide ? 'Show equations' : 'Hide equations';
+    b.setAttribute('aria-label', b.title);
+    b.setAttribute('aria-pressed', String(hide));
   }
   function updateLockBtn(ce) {
     const b = ce.root.querySelector('.mbtn[data-a="lock"]');
@@ -2581,7 +3085,8 @@
     box.innerHTML = `<div class="mopts">${chk('grid', 'Grid')}${chk('numbers', 'Axis numbers')}${chk('minor', 'Minor gridlines')}${chk('arrows', 'Arrows')}`
       + `<span class="marrows" role="group" aria-label="Arrow style">`
       + `<button type="button" data-ab="0" title="Arrows on the positive ends" aria-label="Arrows on the positive ends">${svg('M4 12h16 M16 8l4 4-4 4 M12 20V4 M8 8l4-4 4 4')}</button>`
-      + `<button type="button" data-ab="1" title="Arrows on both ends" aria-label="Arrows on both ends">${svg('M3 12h18 M17 8l4 4-4 4 M7 8l-4 4 4 4 M12 3v18 M8 7l4-4 4 4 M8 17l4 4 4-4')}</button></span></div>`
+      + `<button type="button" data-ab="1" title="Arrows on both ends" aria-label="Arrows on both ends">${svg('M3 12h18 M17 8l4 4-4 4 M7 8l-4 4 4 4 M12 3v18 M8 7l4-4 4 4 M8 17l4 4 4-4')}</button></span>`
+      + `<span class="mfs" role="group" aria-label="Axis number size"><span>Number size</span><button type="button" data-fs="-1" title="Smaller axis numbers" aria-label="Smaller axis numbers">A−</button><b class="mfs-v"></b><button type="button" data-fs="1" title="Bigger axis numbers" aria-label="Bigger axis numbers">A+</button></span></div>`
       + axis('x') + axis('y');
     const o = () => ce.card.opts;
     const changed = () => { drawGraph(ce); touchNote(); };
@@ -2602,6 +3107,11 @@
         applyRange(ce, t.dataset.r[0]);
       }
     });
+    box.querySelectorAll('[data-fs]').forEach((b) => b.addEventListener('click', () => {
+      o().tickSize = clamp((Number(o().tickSize) || 12) + Number(b.dataset.fs), 8, 28);
+      changed();
+      syncGraphSettings(ce);
+    }));
     box.querySelectorAll('[data-ab]').forEach((b) => b.addEventListener('click', () => {
       o().arrowBoth = b.dataset.ab === '1';
       o().arrows = true;
@@ -2649,6 +3159,8 @@
       else i.value = o[key] || '';
     });
     box.querySelectorAll('[data-ab]').forEach((b) => b.classList.toggle('on', (b.dataset.ab === '1') === !!o.arrowBoth));
+    const fv = box.querySelector('.mfs-v');
+    if (fv) fv.textContent = clamp(Number(o.tickSize) || 12, 8, 28);
   }
   let graphTimer = 0;
   function redrawGraphs() {
@@ -2890,14 +3402,33 @@
     g.textBaseline = 'middle';
     g.textAlign = 'left';
     g.fillText('MATH', 30, $('.mhead', root).offsetHeight / 2);
-    for (const row of ce.rows.children) {
-      const line = $('.mline', row), inp = $('.min', row), res = $('.mres', row), dot = $('.mdot', row);
-      const y = ce.rows.offsetTop + row.offsetTop + line.offsetTop + line.offsetHeight / 2;
+    for (const row of ce.rows.hidden ? [] : ce.rows.children) {
+      const line = $('.mline', row), inp = $('.min', row), res = $('.mres', row), dot = $('.mdot', row), sl = $('.mslider', row);
+      // every offset here is measured from the card itself
+      const y = line.offsetTop + line.offsetHeight / 2;
       if (dot.classList.contains('on')) {
-        g.fillStyle = dot.style.background;
         g.beginPath();
         g.arc(dot.offsetLeft + 5, y, 5, 0, Math.PI * 2);
-        g.fill();
+        if (dot.style.background && dot.style.background !== 'transparent') { g.fillStyle = dot.style.background; g.fill(); }
+        else { g.strokeStyle = dot.style.borderColor || '#9aa6b4'; g.lineWidth = 2; g.beginPath(); g.arc(dot.offsetLeft + 5, y, 4, 0, Math.PI * 2); g.stroke(); }
+      }
+      if (!sl.hidden) {
+        const r = $('input', sl), lo = $('.smin', sl), hi = $('.smax', sl);
+        const sy = r.offsetTop + r.offsetHeight / 2, x0 = r.offsetLeft + 8, x1 = r.offsetLeft + r.offsetWidth - 8;
+        const f = clamp((Number(r.value) - Number(r.min)) / ((Number(r.max) - Number(r.min)) || 1), 0, 1);
+        g.lineCap = 'round';
+        g.lineWidth = 4;
+        g.strokeStyle = '#d6dde6';
+        g.beginPath(); g.moveTo(x0, sy); g.lineTo(x1, sy); g.stroke();
+        g.strokeStyle = '#2f6fd0';
+        g.beginPath(); g.moveTo(x0, sy); g.lineTo(x0 + (x1 - x0) * f, sy); g.stroke();
+        g.fillStyle = '#2f6fd0';
+        g.beginPath(); g.arc(x0 + (x1 - x0) * f, sy, 7, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#5d6b7d';
+        g.font = `11px ${FONT}`;
+        g.textAlign = 'left';
+        g.fillText(lo.textContent, lo.offsetLeft, sy);
+        g.fillText(hi.textContent, hi.offsetLeft, sy);
       }
       g.fillStyle = '#1c2430';
       g.font = '16px "Cambria Math", Cambria, serif';
@@ -2913,18 +3444,30 @@
     if (!ce.graphBox.hidden) g.drawImage(ce.gcv, ce.graphBox.offsetLeft, ce.graphBox.offsetTop, ce.graphBox.offsetWidth, ce.graphBox.offsetHeight);
     g.restore();
   }
-  function drawNoteTo(g, n, y0, h, lw = 1) {
+  // live = draw the open note's real math cards; otherwise cards show as plain white cards (thumbnails)
+  function drawNoteTo(g, n, y0, h, lw = 1, live = true) {
     paperDark = (PAPERS[n.paper] || PAPERS.white).dark;
     drawPaper(g, n, 0, y0, PAGE_W, h, lw);
     const visible = n.objects.filter((o) => { const b = bbox(o); return !(b.y > y0 + h || b.y + b.h < y0); });
     visible.filter((o) => o.locked).forEach((o) => drawObj(g, o));
-    if (n === S.note) {
+    const real = live && n === S.note;
+    if (real) {
       cardEls.forEach((ce) => {
         const top = ce.card.y, bottom = top + ce.root.offsetHeight;
         if (bottom >= y0 && top <= y0 + h) drawCardTo(g, ce);
       });
+    } else {
+      (n.cards || []).forEach((c) => {
+        roundRect(g, c.x, c.y, c.w || 380, 40 + (c.lines || []).length * 38 + (c.gh || 0), 12);
+        g.fillStyle = '#fff';
+        g.fill();
+        g.strokeStyle = '#cfd7e2';
+        g.lineWidth = lw;
+        g.stroke();
+      });
     }
-    visible.filter((o) => !o.locked).forEach((o) => drawObj(g, o));
+    cardsLive = real;
+    try { visible.filter((o) => !o.locked).forEach((o) => drawObj(g, o)); } finally { cardsLive = true; }
   }
   function contentHeight(n) {
     let maxY = 300;
@@ -3236,9 +3779,9 @@
     mLabel(m, 'Folder');
     const sel = document.createElement('select');
     sel.setAttribute('aria-label', 'Move note to folder');
-    S.folders.forEach((f) => { const o = document.createElement('option'); o.value = f; o.textContent = f; sel.append(o); });
+    [...folderSet()].sort(natCmp).forEach((f) => { const o = document.createElement('option'); o.value = f; o.textContent = folderLabel(f); sel.append(o); });
     sel.value = S.note.folder;
-    sel.onchange = () => { S.note.folder = sel.value; touchNote(); renderSidebar(); toast(`Moved to ${sel.value}`); };
+    sel.onchange = () => { S.note.folder = sel.value; touchNote(); renderSidebar(); toast(`Moved to ${folderLabel(sel.value)}`); };
     m.append(sel);
     mSep(m);
     mItem(m, 'Full screen', ICON.full, toggleFullscreen);
@@ -3318,7 +3861,7 @@
     const r = el.rail;
     r.innerHTML = '';
     const addTools = (list) => list.forEach(([id, label, ic]) => {
-      const b = railBtn(label, ICON[ic || S.shape], () => { if (S.tool === id && !S.reading) setPanel(!S.panelOpen); else setTool(id); });
+      const b = railBtn(label, ICON[ic || S.shape], () => { if (id === 'cursor' && S.tool === id && !S.reading) return; if (S.tool === id && !S.reading) setPanel(!S.panelOpen); else setTool(id); });
       b.dataset.tool = id;
       if (COLOR_TOOLS.includes(id) && id !== 'shape') { const d = document.createElement('span'); d.className = 'cdot'; b.append(d); }
       r.append(b);
@@ -3351,8 +3894,8 @@
     const qc = $('#quickColors'), tb = $('#thickBtn');
     if (!qc) return;
     const tool = colorToolOf();
-    const hide = ['eraser', 'math'].includes(S.tool);
-    qc.hidden = hide;
+    const hide = ['eraser', 'math', 'cursor'].includes(S.tool);
+    qc.hidden = false;
     if (tb) tb.hidden = hide;
     const curObj = S.sel.find((o) => o.color);
     const cur = tool === 'select' ? curObj && curObj.color : S.colors[tool];
@@ -3363,7 +3906,10 @@
       b.style.setProperty('--c', c);
       b.title = c;
       b.setAttribute('aria-label', 'Colour ' + c);
-      b.onclick = () => { if (tool === 'select') setSelColor(c); else setToolColor(tool, c); };
+      b.onclick = () => {
+        if (tool === 'select') setSelColor(c);
+        else { setToolColor(tool, c); if (!COLOR_TOOLS.includes(S.tool)) setTool('pen'); }
+      };
       qc.append(b);
     });
     if (tb) {
@@ -3386,7 +3932,7 @@
     if (zl) { zl.classList.toggle('active', !!S.zoomLock); zl.setAttribute('aria-pressed', String(!!S.zoomLock)); }
     el.cv.dataset.tool = S.reading ? 'read' : S.tool;
     // math cards can be edited with the graph tool; every other tool writes on top of them
-    document.body.classList.toggle('cards-live', S.tool === 'math' && !S.reading);
+    document.body.classList.toggle('cards-live', (S.tool === 'math' || S.tool === 'cursor') && !S.reading);
     renderQuick();
   }
   function positionPanel() {
@@ -3947,6 +4493,31 @@
     positionPanel();
   }
 
+  function wireLibrary() {
+    const ico = (id, icon) => $(id).insertAdjacentHTML('afterbegin', svg(icon));
+    $('#libMenu').innerHTML = svg(ICON.menu);
+    $('#homeBtn').innerHTML = svg(ICON.grid);
+    ico('#libBack', ICON.chevL);
+    ico('#libCreate', ICON.edit);
+    ico('#libImport', ICON.pdf);
+    ico('#libNewFolder', ICON.folder);
+    ico('#libEmptyTrash', ICON.trash);
+    ico('#libSort', ICON.sortIcon);
+    $('#libMenu').onclick = () => setSidebar(document.body.classList.contains('side-collapsed'));
+    $('#homeBtn').onclick = () => setLibrary(true);
+    $('#libBack').onclick = () => setLibrary(false);
+    $('#libCreate').onclick = newNote;
+    $('#libImport').onclick = () => $('#pdfInput').click();
+    $('#libNewFolder').onclick = () => newFolder();
+    $('#libEmptyTrash').onclick = async () => { await emptyTrash(); setLibrary(true); };
+    $('#libSearch').addEventListener('input', (e) => { S.query = e.target.value; el.search.value = S.query; renderSidebar(); });
+    const sortBtn = $('#libSort');
+    sortBtn.onclick = () => openMenu(sortBtn, (m) => {
+      SORTS.forEach(([k, label]) => mItem(m, label, null, () => { S.sort.by = k; prefs.set('sort', S.sort); renderSidebar(); }, S.sort.by === k ? 'on' : ''));
+    });
+    $('#libDir').onclick = () => { S.sort.dir = S.sort.dir === 'asc' ? 'desc' : 'asc'; prefs.set('sort', S.sort); renderSidebar(); };
+  }
+
   /* ---------------- sidebar toggle ---------------- */
   const isNarrow = () => window.matchMedia('(max-width: 760px)').matches;
   function setSidebar(open) {
@@ -3991,6 +4562,7 @@
       else insertImageFiles(files, pagePt(e));
     });
     const onResize = () => {
+      if (libOpen) return; // the page is re-measured when it shows again
       positionPanel();
       if (S.note && S.autoFit && !S.zoomLock) {
         const before = S.zoom;
@@ -4016,7 +4588,9 @@
     const zoomBy = (f) => { if (S.zoomLock) { toast('Zoom is locked. Tap the zoom lock button to unlock it.'); return; } setZoom(S.zoom * f); };
     $('#zoomInBtn').onclick = () => zoomBy(1.2);
     $('#zoomOutBtn').onclick = () => zoomBy(1 / 1.2);
-    $('#zoomLabel').onclick = () => { fitZoom(); layoutCanvas(); redrawGraphs(); };
+    $('#zoomLabel').onclick = editZoom;
+    $('#fitWidthBtn').innerHTML = svg(ICON.fitWidth);
+    $('#fitWidthBtn').onclick = fitWidth;
     $('#addPageBtn').onclick = addPage;
     $('#recState').onclick = toggleRecording;
     $('#restoreNoteBtn').onclick = () => restoreNote(S.note);
@@ -4029,7 +4603,8 @@
     $('#imageInput').addEventListener('change', (e) => onPick(e, (f) => insertImageFiles(f)));
     $('#cameraInput').addEventListener('change', (e) => onPick(e, (f) => insertImageFiles(f)));
     $('#pdfInput').addEventListener('change', (e) => onPick(e, (f) => importPDF(f[0])));
-    el.search.addEventListener('input', () => { S.query = el.search.value; renderSidebar(); });
+    el.search.addEventListener('input', () => { S.query = el.search.value; $('#libSearch').value = S.query; renderSidebar(); });
+    wireLibrary();
     el.title.addEventListener('input', () => { S.note.title = el.title.value; touchNote(); });
     el.title.addEventListener('keydown', (e) => { if (e.key === 'Enter') el.title.blur(); });
     // keep the text box focused while using text settings
@@ -4049,13 +4624,14 @@
       const t = e.target;
       if (e.key === 'Escape') { closeMenu(); if (!$('#sorter').hidden) closeSorter(); }
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (libOpen) return;
       const k = e.key.toLowerCase();
       const mod = e.ctrlKey || e.metaKey;
       if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
       if (mod && (k === '=' || k === '+')) { e.preventDefault(); setZoom(S.zoom * 1.2); return; }
       if (mod && k === '-') { e.preventDefault(); setZoom(S.zoom / 1.2); return; }
-      if (mod && k === '0') { e.preventDefault(); fitZoom(); layoutCanvas(); redrawGraphs(); return; }
+      if (mod && k === '0') { e.preventDefault(); fitWidth(); return; }
       if (mod && k === 'c') { if (S.sel.length) { e.preventDefault(); copySel(); } return; }
       if (mod && k === 'x') { if (S.sel.length) { e.preventDefault(); cutSel(); } return; }
       if (mod && k === 'd') { e.preventDefault(); duplicateSel(); return; }
@@ -4065,7 +4641,7 @@
       if (k === 'delete' || k === 'backspace') { if (S.sel.length) { e.preventDefault(); deleteSelected(); } return; }
       if (k === 'escape') { if (S.sel.length) { S.sel = []; selectionChanged(); render(); } return; }
       if (S.reading) return;
-      const map = { v: 'select', l: 'select', p: 'pen', h: 'highlighter', e: 'eraser', t: 'text', m: 'math', r: 'shape', a: 'tape', c: 'restyle' };
+      const map = { k: 'cursor', v: 'select', l: 'select', p: 'pen', h: 'highlighter', e: 'eraser', t: 'text', m: 'math', r: 'shape', a: 'tape', c: 'restyle' };
       if (map[k]) setTool(map[k]);
     });
     document.addEventListener('fullscreenchange', () => { const b = $('#act-full'); if (b) b.classList.toggle('on', !!document.fullscreenElement); requestLayout(); });
@@ -4292,6 +4868,7 @@
     }
     const last = prefs.get('lastNote');
     openNote(liveNotes().find((n) => n.id === last) || visibleNotes()[0] || liveNotes()[0]);
+    setLibrary(true); // the app opens on the folders screen; the last note waits behind it
     setTimeout(gcAllBlobs, 4000);
     const sb = $('#syncBtn');
     if (sb) { sb.innerHTML = svg(ICON.cloud) + '<i></i>'; sb.onclick = () => (Sync ? openMenu(sb, buildSyncMenu) : null); sb.hidden = !Sync; if (Sync) Sync.info && sb.setAttribute('data-state', 'off'); }

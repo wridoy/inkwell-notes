@@ -22,7 +22,7 @@
       <input id="search" type="search" placeholder="Search notes" aria-label="Search notes">
       <div class="section-label">Folders <button id="newFolderBtn" class="mini" title="New folder" aria-label="New folder"></button></div>
       <ul id="folderList"></ul>
-      <div class="section-label">Notes</div>
+      <div class="section-label notes-label">Notes</div>
       <ul id="noteList"></ul>
       <div class="side-foot">
         <button id="backupBtn" title="Download a backup file of all notes">Back up</button>
@@ -31,8 +31,36 @@
     </aside>
     <div id="backdrop"></div>
     <main id="main">
+      <section id="library" aria-label="Notes and folders">
+        <header class="lib-head">
+          <button id="libMenu" class="icon" title="Folders list" aria-label="Folders list"></button>
+          <div class="lib-titles">
+            <nav id="libCrumbs" aria-label="Folder path" hidden></nav>
+            <h1 id="libTitle">Folders</h1>
+          </div>
+          <div class="lib-actions">
+            <button id="libBack" class="act" title="Back to the open note"><span>Back to note</span></button>
+            <button id="libCreate" class="act" title="Create note"><span>Create note</span></button>
+            <button id="libImport" class="act" title="Import PDF"><span>Import PDF</span></button>
+            <button id="libNewFolder" class="act" title="New folder"><span>New folder</span></button>
+            <button id="libEmptyTrash" class="act danger-act" title="Empty Trash"><span>Empty Trash</span></button>
+            <input id="libSearch" type="search" placeholder="Search" aria-label="Search notes">
+          </div>
+        </header>
+        <div class="lib-body">
+          <div id="libFolders" class="lib-folders" hidden></div>
+          <div class="lib-sortbar">
+            <button id="libSort" class="lib-sort" title="Sort by" aria-haspopup="menu"><span id="libSortLabel">Date modified</span></button>
+            <span class="lib-bar" aria-hidden="true"></span>
+            <button id="libDir" class="icon" title="Descending" aria-label="Descending"></button>
+          </div>
+          <div id="libGrid" class="lib-grid"></div>
+          <p id="libEmpty" class="lib-empty" hidden></p>
+        </div>
+      </section>
       <header id="topbar">
         <button id="menuBtn" class="icon" title="Notes list" aria-label="Notes list"></button>
+        <button id="homeBtn" class="icon" title="All notes and folders" aria-label="All notes and folders"></button>
         <input id="titleInput" placeholder="Title" aria-label="Note title" autocomplete="off">
         <button id="recState" class="rec-state" title="Stop recording" hidden></button>
         <span id="saveState" aria-live="polite"></span>
@@ -58,7 +86,8 @@
             </div>
             <div id="zoomCtl" role="group" aria-label="Zoom">
               <button id="zoomInBtn" title="Zoom in (Ctrl +)" aria-label="Zoom in"></button>
-              <button id="zoomLabel" title="Fit page to width (Ctrl 0)">100%</button>
+              <button id="zoomLabel" title="Type a zoom level">100%</button>
+              <button id="fitWidthBtn" title="Fit to width (Ctrl 0)" aria-label="Fit to width"></button>
               <button id="zoomOutBtn" title="Zoom out (Ctrl -)" aria-label="Zoom out"></button>
             </div>
             <button id="addPageBtn" title="Add page" aria-label="Add page"></button>
