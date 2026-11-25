@@ -190,6 +190,7 @@
     textStyle: Object.assign({ size: 20, bold: false, italic: false, underline: false, strike: false, bg: null, list: null, align: 'left', indent: 0 }, prefs.get('textStyle', {})),
     fill: prefs.get('fill', false), snap: prefs.get('snap', true), eraseMode: prefs.get('eraseMode', 'stroke'),
     penType: prefs.get('penType', 'fountain'), lineStyle: prefs.get('lineStyle', 'solid'),
+    restylePen: prefs.get('restylePen', 'fountain'), restyleStyle: prefs.get('restyleStyle', 'solid'),
     hlOpacity: prefs.get('hlOpacity', 45), hlTip: prefs.get('hlTip', 'chisel'), favPens: prefs.get('favPens', []),
     eraseHlOnly: prefs.get('eraseHlOnly', false), lassoMode: prefs.get('lassoMode', 'lasso'), lassoPartial: prefs.get('lassoPartial', false),
     eraseTapeOnly: prefs.get('eraseTapeOnly', false), fitText: Object.assign({ highlighter: false, tape: false }, prefs.get('fitText', {})),
@@ -1531,16 +1532,20 @@
     }
     if (changed) action.erased = true;
   }
-  // Change style: brushing over pen strokes, shapes and text gives them the chosen colour and thickness.
+  // Change style: brushing over handwriting gives it the chosen pen type, line style, thickness and colour;
+  // shapes take the colour and thickness, typed text takes the colour.
   function restyleAt(p) {
     const r = 8 / S.zoom;
-    const c = S.colors.restyle, w = S.widths.restyle;
+    const c = S.colors.restyle, w = S.widths.restyle, pen = S.restylePen, style = S.restyleStyle;
     for (const o of S.note.objects) {
       if (o.locked || o.type === 'image' || isTape(o) || isHL(o)) continue;
       if (!hits(o, p.x, p.y, r, true)) continue;
-      if (o.color === c && (o.type === 'text' || o.width === w)) continue;
+      const same = o.color === c && (o.type === 'text'
+        || (o.width === w && (o.type !== 'stroke' || (o.pen === pen && (o.style || 'solid') === style))));
+      if (same) continue;
       o.color = c;
       if (o.type !== 'text') o.width = w;
+      if (o.type === 'stroke') { o.pen = pen; o.style = style; }
       action.changed = true;
     }
   }
@@ -3438,6 +3443,21 @@
     p.innerHTML = '';
     const H = (t) => { const h = document.createElement('div'); h.className = 'ph'; h.textContent = t; p.append(h); };
     const setW = (key) => (v) => { S.widths[key] = v; prefs.set('widths', S.widths); updateRail(); };
+    const lineStylesRow = (current, onPick) => {
+      const ls = document.createElement('div');
+      ls.className = 'line-styles';
+      LINE_STYLES.forEach(([k, label]) => {
+        const b = document.createElement('button');
+        b.className = 'ls' + (current === k ? ' on' : '');
+        b.title = label;
+        b.setAttribute('aria-label', label + ' line');
+        b.setAttribute('aria-pressed', String(current === k));
+        b.innerHTML = lineStyleSvg(k);
+        b.onclick = () => onPick(k);
+        ls.append(b);
+      });
+      p.append(ls);
+    };
     const typeRow = (items, current, onPick, colour) => {
       const row = document.createElement('div');
       row.className = 'pen-types';
@@ -3458,19 +3478,7 @@
       case 'pen': {
         typeRow(PEN_TYPES.map(([k, l]) => [k, l, ICON['pen_' + k]]), S.penType, (k) => { S.penType = k; prefs.set('penType', k); renderPanel(); }, S.colors.pen);
         thickness(p, null, 1, 24, () => S.widths.pen, setW('pen'), S.colors.pen);
-        const ls = document.createElement('div');
-        ls.className = 'line-styles';
-        LINE_STYLES.forEach(([k, label]) => {
-          const b = document.createElement('button');
-          b.className = 'ls' + (S.lineStyle === k ? ' on' : '');
-          b.title = label;
-          b.setAttribute('aria-label', label + ' line');
-          b.setAttribute('aria-pressed', String(S.lineStyle === k));
-          b.innerHTML = lineStyleSvg(k);
-          b.onclick = () => { S.lineStyle = k; prefs.set('lineStyle', k); renderPanel(); };
-          ls.append(b);
-        });
-        p.append(ls);
+        lineStylesRow(S.lineStyle, (k) => { S.lineStyle = k; prefs.set('lineStyle', k); renderPanel(); });
         toggle(p, 'Straighten lines', '', () => S.straighten.pen, (v) => { S.straighten.pen = v; prefs.set('straighten', S.straighten); });
         toggle(p, 'Hold to snap shapes', '', () => S.snap, (v) => { S.snap = v; prefs.set('snap', v); });
         toggle(p, 'Draw with pen only', 'Fingers scroll and zoom instead.', () => S.penOnly, (v) => { S.penOnly = v; prefs.set('penOnly', v); });
@@ -3541,9 +3549,11 @@
       }
       case 'restyle':
         H('Change style');
-        thickness(p, 'Size', 1, 48, () => S.widths.restyle, setW('restyle'), S.colors.restyle);
-        colorGrid(pSection(p, 'Colour'), PALETTE, S.colors.restyle, (c) => setToolColor('restyle', c));
-        hint(p, '<p>Brush over handwriting, shapes or text to give them this colour and size.</p>');
+        typeRow(PEN_TYPES.map(([k, l]) => [k, l, ICON['pen_' + k]]), S.restylePen, (k) => { S.restylePen = k; prefs.set('restylePen', k); renderPanel(); }, S.colors.restyle);
+        thickness(p, null, 1, 48, () => S.widths.restyle, setW('restyle'), S.colors.restyle);
+        lineStylesRow(S.restyleStyle, (k) => { S.restyleStyle = k; prefs.set('restyleStyle', k); renderPanel(); });
+        colorGrid(pSection(p), PALETTE, S.colors.restyle, (c) => setToolColor('restyle', c));
+        hint(p, '<p>Brush over handwriting to give it this pen type, line style, thickness and colour. Shapes take the colour and thickness; typed text takes the colour.</p>');
         break;
       case 'eraser':
         radioRows(p, [['stroke', 'Stroke eraser'], ['area', 'Area eraser']], S.eraseMode, (k) => { S.eraseMode = k; prefs.set('eraseMode', k); renderPanel(); });
