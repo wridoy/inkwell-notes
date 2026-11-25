@@ -8,7 +8,11 @@
     '#1c2430', '#5d6b7d', '#9aa6b4', '#ffffff', '#d1453b', '#e8743b', '#f2b01e', '#f6d743',
     '#2e9d57', '#5cc98a', '#0f9fa8', '#38b6e8', '#2f6fd0', '#1f3f8f', '#7b4fd6', '#c04fd6',
     '#e85a8c', '#f4a3b5', '#a8743f', '#6b4423', '#f7c59f', '#c9e4a6', '#a6d8f0', '#cdb8f0',
+    '#000000', '#3b3f45', '#00a383', '#0b6e99', '#9b1c31', '#ff8a5b', '#b8e986', '#ffd6e7',
   ];
+  const PEN_TYPES = [['fountain', 'Fountain pen'], ['ballpoint', 'Ballpoint pen'], ['calligraphy', 'Calligraphy pen'], ['pencil', 'Pencil'], ['brush', 'Brush']];
+  const LINE_STYLES = [['solid', 'Solid'], ['taper', 'Tapered'], ['dash', 'Dashed'], ['dot', 'Dotted']];
+  const TEXT_SIZES = [8, 10, 12, 14, 16, 17, 18, 20, 22, 24, 28, 32, 36, 40, 48, 56, 64, 72, 96];
   const HL_PALETTE = ['#fff176', '#ffd54f', '#b9f6ca', '#80d8ff', '#ff9ecb', '#e1bee7', '#ffcc80', '#cfd8dc'];
   const GRAPH_COLORS = ['#2f6fd0', '#d1453b', '#2e9d57', '#7b4fd6', '#e08a1e', '#0f9fa8'];
   const PAPERS = {
@@ -85,13 +89,48 @@
     folder: 'M3 6h6l2 2h10v11H3z',
     file: 'M6 3h9l4 4v14H6z M14 3v5h5',
     all: 'M4 5h16 M4 12h16 M4 19h16',
+    pen_fountain: 'M9 2h6v9l-3 11-3-11z M12 11v5 M9 7h6',
+    pen_ballpoint: 'M10 2h4v14l-2 6-2-6z M10 12h4',
+    pen_calligraphy: 'M9 2h6v10l-1 3h-4l-1-3z M10 15l2 7 2-7',
+    pen_pencil: 'M10 2h4v15l-2 5-2-5z M10 17h4 M10 5h4',
+    pen_brush: 'M10 2h4v9h-4z M9 11h6l-.5 4c0 3-1.2 5.5-2.5 7-1.3-1.5-2.5-4-2.5-7z',
+    hl_chisel: 'M9 2h6v10l1 2v3h-8v-3l1-2z M9.5 17l1.5 5 2.5-3v-2',
+    hl_round: 'M9 2h6v10l1 2v3h-8v-3l1-2z M10 17a2 2 0 0 0 4 0',
+    eyedropper: 'M15.5 3.5l5 5-2.5 2.5-5-5z M13.5 8.5l-8 8V20h3.5l8-8',
+    rectSel: 'M4 4h3 M10 4h4 M17 4h3v3 M20 10v4 M20 17v3h-3 M14 20h-4 M7 20H4v-3 M4 14v-4 M4 7V4',
+    listCheck: 'M3.5 4.5h5v5h-5z M5 7l1 1 2-2 M11 7h10 M3.5 14.5h5v5h-5z M11 17h10',
+    listBullet: 'M9 6h12 M9 12h12 M9 18h12 M4.5 6h.01 M4.5 12h.01 M4.5 18h.01',
+    listNumber: 'M10 6h11 M10 12h11 M10 18h11 M4 4.5l1.5-1v5 M3.5 15a1.6 1.6 0 0 1 3 .2c0 1.3-3 2.3-3 3.8h3',
+    alignLeft: 'M4 6h16 M4 10h10 M4 14h16 M4 18h10',
+    alignCenter: 'M4 6h16 M7 10h10 M4 14h16 M7 18h10',
+    alignRight: 'M4 6h16 M10 10h10 M4 14h16 M10 18h10',
+    indent: 'M11 6h9 M11 10h9 M11 14h9 M4 18h16 M4 8.5l3.5 2.5L4 13.5',
+    outdent: 'M11 6h9 M11 10h9 M11 14h9 M4 18h16 M7.5 8.5L4 11l3.5 2.5',
+    chevDown: 'M6 9l6 6 6-6',
+    tape: 'M3 10a5 5 0 1 0 10 0a5 5 0 1 0 -10 0 M8 10h.01 M10.5 14.3L20 18v-5l-7-2.5',
+    restyle: 'M5 20l6-16h2l6 16 M8.2 14h7.6',
+    zoomLock: 'M9.5 3a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13 M14.2 14.2l2.3 2.3 M15 17.5h6v4.5h-6z M16.5 17.5V16a1.5 1.5 0 0 1 3 0v1.5',
   };
   const svg = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
   const SHAPES = [['rect', 'Rectangle'], ['ellipse', 'Ellipse'], ['triangle', 'Triangle'], ['diamond', 'Diamond'], ['star', 'Star'], ['line', 'Line'], ['arrow', 'Arrow']];
   const SHAPE_NAMES = { rect: 'rectangle', ellipse: 'ellipse', triangle: 'triangle', diamond: 'diamond', star: 'star', line: 'line', arrow: 'arrow', poly: 'shape' };
   const RAIL = [
     ['text', 'Text (T)', 'keyboard'], ['pen', 'Pen (P)', 'pen'], ['highlighter', 'Highlighter (H)', 'highlighter'],
-    ['eraser', 'Eraser (E)', 'eraser'], ['select', 'Lasso select (V)', 'lasso'], ['shape', 'Shapes (R)', null], ['math', 'Math & graphs (M)', 'math'],
+    ['eraser', 'Eraser (E)', 'eraser'], ['select', 'Lasso select (V)', 'lasso'],
+  ];
+  const RAIL2 = [['tape', 'Tape (A)', 'tape'], ['restyle', 'Change style (C)', 'restyle'], ['shape', 'Shapes (R)', null], ['math', 'Math & graphs (M)', 'math']];
+  const ALL_TOOLS = RAIL.concat(RAIL2).map((r) => r[0]);
+  // Tape patterns (original designs): background colour plus a small repeating motif.
+  const TAPE_PATTERNS = [
+    { bg: '#cfe9f5', fg: '#3f7fa6', kind: 'plus' },
+    { bg: '#fbf3d5', fg: '#c9b98a', kind: 'hstripe' },
+    { bg: '#9fd3cf', fg: '#e9f6f4', kind: 'check' },
+    { bg: '#c97f6a', fg: '#f6e3d9', kind: 'dots' },
+    { bg: '#f9d3dc', fg: '#f19ab0', kind: 'grid' },
+    { bg: '#4f7fd0', fg: '#a9c6f5', kind: 'vstripe' },
+    { bg: '#4b4f7a', fg: '#f08fb5', kind: 'chevron' },
+    { bg: '#6a4c93', fg: '#f6c76b', kind: 'wave' },
+    { bg: '#21614f', fg: '#f2b84b', kind: 'arch' },
   ];
   const ACTIONS = [
     ['full', 'Full screen', 'full'], ['read', 'Reading mode', 'book'], ['pages', 'Page sorter', 'pages'], ['style', 'Note style', 'style'],
@@ -145,15 +184,21 @@
   const S = {
     notes: [], folders: ['Personal', 'School', 'Work'], note: null, folder: 'all', query: '',
     tool: prefs.get('tool', 'pen'), shape: prefs.get('shape', 'rect'),
-    colors: Object.assign({ pen: '#1c2430', highlighter: '#fff176', text: '#1c2430', shape: '#2f6fd0' }, prefs.get('colors', {})),
-    widths: Object.assign({ pen: 3, highlighter: 16, shape: 3, eraser: 30 }, prefs.get('widths', {})),
-    textStyle: Object.assign({ size: 20, bold: false, italic: false, underline: false, strike: false, bg: null }, prefs.get('textStyle', {})),
+    colors: Object.assign({ pen: '#1c2430', highlighter: '#fff176', text: '#1c2430', shape: '#2f6fd0', tape: '#a6d8f0', restyle: '#d1453b' }, prefs.get('colors', {})),
+    widths: Object.assign({ pen: 3, highlighter: 16, shape: 3, eraser: 30, tape: 34, restyle: 4 }, prefs.get('widths', {})),
+    straighten: Object.assign({ pen: false, highlighter: false, tape: false }, prefs.get('straighten', {})),
+    textStyle: Object.assign({ size: 20, bold: false, italic: false, underline: false, strike: false, bg: null, list: null, align: 'left', indent: 0 }, prefs.get('textStyle', {})),
     fill: prefs.get('fill', false), snap: prefs.get('snap', true), eraseMode: prefs.get('eraseMode', 'stroke'),
+    penType: prefs.get('penType', 'fountain'), lineStyle: prefs.get('lineStyle', 'solid'),
+    hlOpacity: prefs.get('hlOpacity', 45), hlTip: prefs.get('hlTip', 'chisel'), favPens: prefs.get('favPens', []),
+    eraseHlOnly: prefs.get('eraseHlOnly', false), lassoMode: prefs.get('lassoMode', 'lasso'), lassoPartial: prefs.get('lassoPartial', false),
+    eraseTapeOnly: prefs.get('eraseTapeOnly', false), fitText: Object.assign({ highlighter: false, tape: false }, prefs.get('fitText', {})),
+    tapeKind: prefs.get('tapeKind', 'pattern'), tapePattern: prefs.get('tapePattern', 0), zoomLock: prefs.get('zoomLock', false),
     penOnly: prefs.get('penOnly', false), penSeen: prefs.get('penSeen', false),
-    panelOpen: prefs.get('panelOpen', window.innerWidth >= 1200), reading: false,
+    panelOpen: false, reading: false,
     zoom: 1, autoFit: true, sel: [], undo: [], redo: [], storageOk: true,
   };
-  if (!RAIL.some((r) => r[0] === S.tool)) S.tool = 'pen';
+  if (!ALL_TOOLS.includes(S.tool)) S.tool = 'pen';
 
   const el = {
     folderList: $('#folderList'), noteList: $('#noteList'), search: $('#search'), title: $('#titleInput'), save: $('#saveState'),
@@ -550,6 +595,7 @@
     applyZoomSize();
   }
   function setZoom(z, cx, cy) {
+    if (S.zoomLock) return;
     z = clamp(z, 0.25, 4);
     S.autoFit = false;
     if (Math.abs(z - S.zoom) < 1e-4) return;
@@ -636,12 +682,18 @@
     return { x: Math.min(o.x1, o.x2), y: Math.min(o.y1, o.y2), w: Math.abs(o.x2 - o.x1), h: Math.abs(o.y2 - o.y1) };
   }
   const textFont = (o) => `${o.italic ? 'italic ' : ''}${o.bold ? '700' : '400'} ${o.size}px ${FONT}`;
-  function textBox(o) {
+  function textLayout(o) {
     mctx.font = textFont(o);
     const lines = o.text.split('\n');
-    let w = 0;
-    lines.forEach((l) => { w = Math.max(w, mctx.measureText(l).width); });
-    return { x: o.x, y: o.y, w: Math.max(w, 4), h: lines.length * o.size * 1.3 };
+    const widths = lines.map((l) => mctx.measureText(l).width);
+    return {
+      lines, widths, maxW: Math.max(4, ...widths), lh: o.size * 1.3,
+      mw: o.list ? o.size * 1.6 : 0, ix: (o.indent || 0) * o.size * 1.6,
+    };
+  }
+  function textBox(o) {
+    const L = textLayout(o);
+    return { x: o.x, y: o.y, w: L.ix + L.mw + L.maxW, h: L.lines.length * L.lh };
   }
   function bbox(o) {
     if (o.type === 'text') return textBox(o);
@@ -874,35 +926,110 @@
       }
     }
   }
+  const isHL = (o) => o.type === 'stroke' && !o.tape && (!!o.hl || (o.alpha != null && o.alpha < 1));
+  const isTape = (o) => o.type === 'stroke' && !!o.tape;
+  const patternCache = new Map();
+  function tapePattern(c, idx) {
+    const key = idx;
+    if (patternCache.has(key)) return patternCache.get(key);
+    const t = TAPE_PATTERNS[idx] || TAPE_PATTERNS[0];
+    const s = 24;
+    const cv = document.createElement('canvas');
+    cv.width = s;
+    cv.height = s;
+    const g = cv.getContext('2d');
+    g.fillStyle = t.bg;
+    g.fillRect(0, 0, s, s);
+    g.fillStyle = t.fg;
+    g.strokeStyle = t.fg;
+    g.lineWidth = 2;
+    g.lineCap = 'round';
+    switch (t.kind) {
+      case 'plus': g.fillRect(10, 6, 3, 11); g.fillRect(6, 10, 11, 3); break;
+      case 'hstripe': for (let y = 3; y < s; y += 8) g.fillRect(0, y, s, 2); break;
+      case 'check': g.fillRect(0, 0, 12, 12); g.fillRect(12, 12, 12, 12); break;
+      case 'dots': [[6, 6], [18, 18], [18, 6], [6, 18]].forEach(([x, y], i) => { if (i < 2) { g.beginPath(); g.arc(x, y, 1.8, 0, Math.PI * 2); g.fill(); } }); g.globalAlpha = 0.6; g.beginPath(); g.arc(18, 6, 1.2, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1; break;
+      case 'grid': g.globalAlpha = 0.8; g.fillRect(0, 11, s, 2); g.fillRect(11, 0, 2, s); g.globalAlpha = 1; break;
+      case 'vstripe': for (let x = 2; x < s; x += 6) g.fillRect(x, 0, 2, s); break;
+      case 'chevron': g.beginPath(); g.moveTo(8, 9); g.lineTo(12, 14); g.lineTo(16, 9); g.stroke(); break;
+      case 'wave': g.beginPath(); g.moveTo(0, 12); g.bezierCurveTo(6, 6, 6, 6, 12, 12); g.bezierCurveTo(18, 18, 18, 18, 24, 12); g.stroke(); break;
+      case 'arch': g.beginPath(); g.arc(12, 16, 6, Math.PI, 0); g.fill(); break;
+      default: break;
+    }
+    const pat = (c || mctx).createPattern(cv, 'repeat');
+    patternCache.set(key, pat);
+    return pat;
+  }
+  function strokeWidthFn(o) {
+    const p = o.pts, n = p.length, w = o.width;
+    const type = o.pen || 'fountain';
+    const pf = { fountain: [0.4, 1.2], brush: [0.3, 1.4], ballpoint: [0.85, 0.3], pencil: [0.7, 0.6], calligraphy: [0.75, 0.5] }[type] || [1, 0];
+    const taper = o.style === 'taper' || type === 'brush';
+    return (i) => {
+      const a = p[Math.max(0, i - 1)], b = p[i];
+      let f = o.pr ? pf[0] + ((a[2] + b[2]) / 2 || 0.5) * pf[1] : 1;
+      if (type === 'calligraphy') { const ang = Math.atan2(b[1] - a[1], b[0] - a[0]); f *= 0.3 + 1.1 * Math.abs(Math.sin(ang - Math.PI / 4)); }
+      if (taper) { const k = Math.max(4, Math.min(14, n / 5)); f *= Math.max(0.15, Math.min(1, (i + 1) / k, (n - i) / k)); }
+      return Math.max(0.4, w * f);
+    };
+  }
+  function smoothPath(c, p) {
+    c.beginPath();
+    c.moveTo(p[0][0], p[0][1]);
+    for (let i = 1; i < p.length - 1; i++) c.quadraticCurveTo(p[i][0], p[i][1], (p[i][0] + p[i + 1][0]) / 2, (p[i][1] + p[i + 1][1]) / 2);
+    c.lineTo(p[p.length - 1][0], p[p.length - 1][1]);
+  }
   function drawStroke(c, o) {
     const p = o.pts;
-    const col = o.alpha < 1 ? o.color : ink(o.color);
-    c.strokeStyle = col;
-    c.fillStyle = col;
-    c.globalAlpha = o.alpha || 1;
-    c.lineCap = 'round';
-    c.lineJoin = 'round';
-    if (o.alpha < 1 && paperDark) c.globalCompositeOperation = 'screen';
-    else if (o.alpha < 1) c.globalCompositeOperation = 'multiply';
-    const wAt = (pr) => (o.pr ? o.width * (0.4 + pr * 1.2) : o.width);
-    if (p.length === 1) {
-      c.beginPath();
-      c.arc(p[0][0], p[0][1], Math.max(0.5, wAt(p[0][2] || 0.5) / 2), 0, Math.PI * 2);
-      c.fill();
-      return;
-    }
-    if (!o.pr) {
+    const hl = isHL(o), tape = isTape(o);
+    if (tape) {
+      c.globalAlpha = o.peek ? 0.18 : 0.97;
+      c.strokeStyle = o.pattern != null ? tapePattern(c, o.pattern) : o.color;
+      c.fillStyle = c.strokeStyle;
+      c.lineCap = 'butt';
+      c.lineJoin = 'round';
       c.lineWidth = o.width;
-      c.beginPath();
-      c.moveTo(p[0][0], p[0][1]);
-      for (let i = 1; i < p.length - 1; i++) c.quadraticCurveTo(p[i][0], p[i][1], (p[i][0] + p[i + 1][0]) / 2, (p[i][1] + p[i + 1][1]) / 2);
-      c.lineTo(p[p.length - 1][0], p[p.length - 1][1]);
+      if (p.length === 1) { c.fillRect(p[0][0] - o.width / 2, p[0][1] - o.width / 2, o.width, o.width); return; }
+      smoothPath(c, p);
       c.stroke();
       return;
     }
+    const col = hl ? o.color : ink(o.color);
+    c.strokeStyle = col;
+    c.fillStyle = col;
+    c.globalAlpha = hl ? o.alpha || 0.45 : o.pen === 'pencil' ? 0.85 : 1;
+    const round = !(hl && o.tip === 'chisel');
+    c.lineCap = round ? 'round' : 'butt';
+    c.lineJoin = round ? 'round' : 'bevel';
+    if (hl) c.globalCompositeOperation = paperDark ? 'screen' : 'multiply';
+    if (p.length === 1) {
+      c.beginPath();
+      c.arc(p[0][0], p[0][1], Math.max(0.5, o.width / 2), 0, Math.PI * 2);
+      c.fill();
+      return;
+    }
+    const dashed = o.style === 'dash' || o.style === 'dot';
+    const variable = !hl && !dashed && (o.pr || o.style === 'taper' || o.pen === 'calligraphy' || o.pen === 'brush');
+    if (!variable) {
+      c.lineWidth = o.width;
+      if (o.style === 'dash') c.setLineDash([o.width * 3, o.width * 2.2]);
+      else if (o.style === 'dot') { c.lineCap = 'round'; c.setLineDash([0.01, o.width * 2.4]); }
+      smoothPath(c, p);
+      c.stroke();
+      if (o.pen === 'pencil' && !dashed) {
+        // a light second pass gives pencil lines a grainy edge
+        c.globalAlpha = 0.35;
+        c.lineWidth = o.width * 1.35;
+        c.setLineDash([1, 1.7]);
+        c.stroke();
+      }
+      c.setLineDash([]);
+      return;
+    }
+    const wf = strokeWidthFn(o);
     for (let i = 1; i < p.length; i++) {
       const a = p[i - 1], b = p[i];
-      c.lineWidth = wAt((a[2] + b[2]) / 2);
+      c.lineWidth = wf(i);
       c.beginPath();
       c.moveTo(a[0], a[1]);
       c.lineTo(b[0], b[1]);
@@ -940,18 +1067,55 @@
     if (o.fill) { c.fillStyle = hexA(col, 0.22); c.fill(); }
     c.stroke();
   }
-  function drawText(c, o) {
+  function drawMarker(c, o, num, x, y, L, checked) {
+    const s = o.size, col = ink(o.color);
+    c.save();
+    c.fillStyle = col;
+    c.strokeStyle = col;
+    c.lineWidth = Math.max(1, s / 12);
+    if (o.list === 'bullet') {
+      c.beginPath();
+      c.arc(x + L.mw * 0.4, y + L.lh * 0.5, s * 0.14, 0, Math.PI * 2);
+      c.fill();
+    } else if (o.list === 'number') {
+      c.font = textFont(o);
+      c.textAlign = 'right';
+      c.textBaseline = 'top';
+      c.fillText(num + '.', x + L.mw - s * 0.35, y + s * 0.08);
+    } else {
+      const b = s * 0.78, bx = x + s * 0.1, by = y + (L.lh - b) / 2;
+      c.lineJoin = 'round';
+      c.strokeRect(bx, by, b, b);
+      if (checked) {
+        c.lineWidth = Math.max(1.5, s / 9);
+        c.beginPath();
+        c.moveTo(bx + b * 0.2, by + b * 0.52);
+        c.lineTo(bx + b * 0.42, by + b * 0.75);
+        c.lineTo(bx + b * 0.82, by + b * 0.25);
+        c.stroke();
+      }
+    }
+    c.restore();
+  }
+  function drawText(c, o, markersOnly) {
+    const L = textLayout(o);
     c.font = textFont(o);
     c.textBaseline = 'top';
-    const lh = o.size * 1.3, th = Math.max(1, o.size / 14);
-    o.text.split('\n').forEach((ln, i) => {
-      const y = o.y + i * lh;
-      const w = c.measureText(ln).width;
-      if (o.bg && ln) { c.fillStyle = hexA(o.bg, paperDark ? 0.45 : 0.75); c.fillRect(o.x - 2, y, w + 4, lh); }
+    const th = Math.max(1, o.size / 14);
+    let num = 0;
+    L.lines.forEach((ln, i) => {
+      const y = o.y + i * L.lh, w = L.widths[i];
+      const tx = o.x + L.ix + L.mw + (o.align === 'center' ? (L.maxW - w) / 2 : o.align === 'right' ? L.maxW - w : 0);
+      const checked = o.list === 'check' && o.checks && o.checks[i];
+      if (o.list && ln.trim()) { num++; drawMarker(c, o, num, o.x + L.ix, y, L, checked); }
+      if (markersOnly) return;
+      if (o.bg && ln) { c.fillStyle = hexA(o.bg, paperDark ? 0.45 : 0.75); c.fillRect(tx - 2, y, w + 4, L.lh); }
+      c.globalAlpha = checked ? 0.45 : 1;
       c.fillStyle = ink(o.color);
-      c.fillText(ln, o.x, y + o.size * 0.08);
-      if (o.underline && ln) c.fillRect(o.x, y + o.size * 1.12, w, th);
-      if (o.strike && ln) c.fillRect(o.x, y + o.size * 0.62, w, th);
+      c.fillText(ln, tx, y + o.size * 0.08);
+      if (o.underline && ln) c.fillRect(tx, y + o.size * 1.12, w, th);
+      if ((o.strike || checked) && ln) c.fillRect(tx, y + o.size * 0.62, w, th);
+      c.globalAlpha = 1;
     });
   }
   function drawImageObj(c, o) {
@@ -1018,6 +1182,11 @@
       if (b.x > vx + vw || b.y > vy + vh || b.x + b.w < vx || b.y + b.h < vy) continue;
       drawObj(ctx, o);
     }
+    if (editor && editor.style.list) {
+      ctx.save();
+      drawText(ctx, Object.assign({ x: editor.x, y: editor.y, text: editor.ta.value, color: editor.color, checks: editor.obj ? editor.obj.checks : null }, editor.style), true);
+      ctx.restore();
+    }
     if (action && action.live) drawObj(ctx, action.snapped || action.live);
     if (action && action.lasso && action.lasso.length > 1) {
       ctx.save();
@@ -1080,19 +1249,45 @@
     if (action) return;
     closeTextEditor();
     closeMenu();
+    if (S.panelOpen) setPanel(false); // the settings pop-up closes when you touch the page
     capture(el.cv, e);
+    const cp = pagePt(e);
+    if ((S.reading || ['text', 'select', 'pen'].includes(S.tool)) && toggleCheckAt(cp)) { e.preventDefault(); return; }
     if (S.reading) {
-      action = { pointerId: e.pointerId, mode: 'pan', sx: e.clientX, sy: e.clientY, sl: el.scroller.scrollLeft, st: el.scroller.scrollTop };
+      action = { pointerId: e.pointerId, mode: 'pan', sx: e.clientX, sy: e.clientY, sl: el.scroller.scrollLeft, st: el.scroller.scrollTop, start: cp };
       return;
     }
-    const p = pagePt(e);
+    const p = cp;
     let tool = S.tool;
     if (e.pointerType === 'pen' && (e.button === 5 || e.button === 2 || (e.buttons & 32) || (e.buttons & 2))) tool = 'eraser';
     action = { pointerId: e.pointerId, touch: e.pointerType === 'touch', tool, start: p, last: p };
-    if (tool === 'pen' || tool === 'highlighter') {
-      const hl = tool === 'highlighter';
-      action.live = { type: 'stroke', pts: [[r1(p.x), r1(p.y), r2(pressureOf(e))]], color: S.colors[tool], width: S.widths[tool], alpha: hl ? 0.45 : 1, pr: e.pointerType === 'pen' && !hl };
-      armSnap(p);
+    if (tool === 'pen' || tool === 'highlighter' || tool === 'tape') {
+      const pt = [r1(p.x), r1(p.y), r2(pressureOf(e))];
+      if (tool === 'pen') {
+        action.live = { type: 'stroke', pts: [pt], color: S.colors.pen, width: S.widths.pen, pr: e.pointerType === 'pen', pen: S.penType, style: S.lineStyle };
+      } else if (tool === 'highlighter') {
+        action.live = { type: 'stroke', pts: [pt], color: S.colors.highlighter, width: S.widths.highlighter, alpha: r2(S.hlOpacity / 100), hl: true, tip: S.hlTip, pr: false };
+      } else {
+        action.live = { type: 'stroke', pts: [pt], color: S.colors.tape, width: S.widths.tape, tape: true, pr: false };
+        if (S.tapeKind === 'pattern') action.live.pattern = S.tapePattern;
+      }
+      action.straight = !!S.straighten[tool];
+      if (S.fitText[tool]) {
+        const t = topHit(p.x, p.y, 4 / S.zoom);
+        if (t && t.type === 'text') {
+          const L = textLayout(t);
+          const li = clamp(Math.floor((p.y - t.y) / L.lh), 0, L.lines.length - 1);
+          action.fitY = r1(t.y + li * L.lh + L.lh / 2);
+          action.live.width = r1(L.lh * 0.95);
+          action.live.pts[0][1] = action.fitY;
+        }
+      }
+      if (!action.straight && tool === 'pen') armSnap(p);
+    } else if (tool === 'restyle') {
+      action.snap = snapshot();
+      action.changed = false;
+      restyleAt(p);
+      requestRender();
     } else if (tool === 'shape') {
       action.live = { type: 'shape', kind: S.shape, x1: r1(p.x), y1: r1(p.y), x2: r1(p.x), y2: r1(p.y), color: S.colors.shape, width: S.widths.shape, fill: S.fill && !['line', 'arrow'].includes(S.shape) };
     } else if (tool === 'eraser') {
@@ -1115,7 +1310,7 @@
           Object.assign(action, { mode: 'move', orig: S.sel.map(clone), snap: snapshot() });
         } else {
           if (S.sel.length) { S.sel = []; selectionChanged(); }
-          Object.assign(action, { mode: 'lasso', lasso: [[p.x, p.y]] });
+          Object.assign(action, { mode: 'lasso', lasso: [[p.x, p.y]], rect: S.lassoMode === 'rect' });
         }
         render();
       }
@@ -1161,14 +1356,19 @@
     const p = pagePt(e);
     if (a.live && a.live.type === 'stroke') {
       if (a.snapped) return;
-      const evs = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
-      for (const ev of evs.length ? evs : [e]) {
-        const q = pagePt(ev);
-        const last = a.live.pts[a.live.pts.length - 1];
-        if (Math.hypot(q.x - last[0], q.y - last[1]) < 0.8 / S.zoom) continue;
-        a.live.pts.push([r1(q.x), r1(q.y), r2(pressureOf(ev))]);
+      const yOf = (y) => (a.fitY != null ? a.fitY : y);
+      if (a.straight) {
+        a.live.pts = [a.live.pts[0], [r1(p.x), r1(yOf(p.y)), r2(pressureOf(e))]];
+      } else {
+        const evs = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
+        for (const ev of evs.length ? evs : [e]) {
+          const q = pagePt(ev);
+          const last = a.live.pts[a.live.pts.length - 1];
+          if (Math.hypot(q.x - last[0], q.y - last[1]) < 0.8 / S.zoom) continue;
+          a.live.pts.push([r1(q.x), r1(yOf(q.y)), r2(pressureOf(ev))]);
+        }
+        if (a.tool === 'pen' && Math.hypot(p.x - a.holdX, p.y - a.holdY) > 4 / S.zoom) armSnap(p);
       }
-      if (Math.hypot(p.x - a.holdX, p.y - a.holdY) > 4 / S.zoom) armSnap(p);
       autoGrow(p.y);
       requestRender();
     } else if (a.live && a.live.type === 'shape') {
@@ -1194,9 +1394,19 @@
       for (let i = 1; i <= steps; i++) eraseAt({ x: a.last.x + ((p.x - a.last.x) * i) / steps, y: a.last.y + ((p.y - a.last.y) * i) / steps });
       a.last = p;
       requestRender();
+    } else if (a.tool === 'restyle') {
+      const steps = Math.max(1, Math.ceil(Math.hypot(p.x - a.last.x, p.y - a.last.y) / 4));
+      for (let i = 1; i <= steps; i++) restyleAt({ x: a.last.x + ((p.x - a.last.x) * i) / steps, y: a.last.y + ((p.y - a.last.y) * i) / steps });
+      a.last = p;
+      requestRender();
     } else if (a.mode === 'lasso') {
-      const l = a.lasso[a.lasso.length - 1];
-      if (Math.hypot(p.x - l[0], p.y - l[1]) > 3 / S.zoom) a.lasso.push([r1(p.x), r1(p.y)]);
+      if (a.rect) {
+        const s = a.start;
+        a.lasso = [[s.x, s.y], [r1(p.x), s.y], [r1(p.x), r1(p.y)], [s.x, r1(p.y)]];
+      } else {
+        const l = a.lasso[a.lasso.length - 1];
+        if (Math.hypot(p.x - l[0], p.y - l[1]) > 3 / S.zoom) a.lasso.push([r1(p.x), r1(p.y)]);
+      }
       requestRender();
     } else if (a.mode === 'move') {
       const dx = p.x - a.start.x, dy = p.y - a.start.y;
@@ -1227,9 +1437,15 @@
     const a = action;
     action = null;
     clearTimeout(a.snapTimer);
-    if (a.mode === 'pan') return;
     const p = pagePt(e);
+    if (a.mode === 'pan') {
+      if (Math.hypot(e.clientX - a.sx, e.clientY - a.sy) < 6) toggleTapeAt(p);
+      return;
+    }
     if (a.live && a.live.type === 'stroke') {
+      const pts = a.live.pts, s0 = pts[0];
+      const isTap = !a.snapped && pts.every((q) => Math.hypot(q[0] - s0[0], q[1] - s0[1]) < 4 / S.zoom);
+      if (isTap && a.tool !== 'tape' && toggleTapeAt(p)) { render(); return; }
       pushHistory();
       S.note.objects.push(a.snapped || a.live);
       if (a.snapped) toast(`Snapped to ${shapeName(a.snapped)}`, 1400);
@@ -1239,14 +1455,24 @@
       if (Math.hypot(o.x2 - o.x1, o.y2 - o.y1) > 4) { pushHistory(); S.note.objects.push(o); touchNote(); }
     } else if (a.tool === 'eraser') {
       if (a.erased) { pushHistory(a.snap); touchNote(); }
+    } else if (a.tool === 'restyle') {
+      if (a.changed) { pushHistory(a.snap); touchNote(); }
     } else if (a.mode === 'lasso') {
-      if (a.lasso.length > 4) {
-        const poly = a.lasso;
+      const big = a.rect ? Math.abs(p.x - a.start.x) > 4 / S.zoom && Math.abs(p.y - a.start.y) > 4 / S.zoom : a.lasso.length > 4;
+      if (big) {
+        const poly = a.lasso, part = S.lassoPartial;
+        const corners = (b) => [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
         S.sel = S.note.objects.filter((o) => {
           if (o.locked) return false;
-          if (o.type === 'stroke') { let k = 0; for (const q of o.pts) if (inPoly(q[0], q[1], poly)) k++; return k / o.pts.length >= 0.6; }
           const b = bbox(o);
-          return inPoly(b.x + b.w / 2, b.y + b.h / 2, poly);
+          const pts = o.type === 'stroke' ? o.pts : corners(b);
+          let k = 0;
+          for (const q of pts) if (inPoly(q[0], q[1], poly)) k++;
+          if (part) {
+            if (k) return true;
+            return inPoly(b.x + b.w / 2, b.y + b.h / 2, poly) || poly.some((q) => q[0] >= b.x && q[0] <= b.x + b.w && q[1] >= b.y && q[1] <= b.y + b.h);
+          }
+          return o.type === 'stroke' ? k / pts.length >= 0.9 : k === pts.length;
         });
         selectionChanged();
       }
@@ -1295,6 +1521,8 @@
     for (let i = objs.length - 1; i >= 0; i--) {
       const o = objs[i];
       if (o.locked || o.type === 'image') continue;
+      if (S.eraseHlOnly && !isHL(o)) continue;
+      if (S.eraseTapeOnly && !isTape(o)) continue;
       if (!hits(o, p.x, p.y, r, true)) continue;
       if (S.eraseMode === 'area' && o.type === 'stroke') objs.splice(i, 1, ...splitStroke(o, p, r + o.width / 2));
       else objs.splice(i, 1);
@@ -1302,6 +1530,49 @@
       changed = true;
     }
     if (changed) action.erased = true;
+  }
+  // Change style: brushing over pen strokes, shapes and text gives them the chosen colour and thickness.
+  function restyleAt(p) {
+    const r = 8 / S.zoom;
+    const c = S.colors.restyle, w = S.widths.restyle;
+    for (const o of S.note.objects) {
+      if (o.locked || o.type === 'image' || isTape(o) || isHL(o)) continue;
+      if (!hits(o, p.x, p.y, r, true)) continue;
+      if (o.color === c && (o.type === 'text' || o.width === w)) continue;
+      o.color = c;
+      if (o.type !== 'text') o.width = w;
+      action.changed = true;
+    }
+  }
+  function toggleTapeAt(p) {
+    const objs = S.note.objects;
+    for (let i = objs.length - 1; i >= 0; i--) {
+      const o = objs[i];
+      if (!isTape(o) || !hits(o, p.x, p.y, 2 / S.zoom, true)) continue;
+      o.peek = !o.peek;
+      touchNote();
+      requestRender();
+      return true;
+    }
+    return false;
+  }
+  function toggleCheckAt(p) {
+    const objs = S.note.objects;
+    for (let i = objs.length - 1; i >= 0; i--) {
+      const o = objs[i];
+      if (o.type !== 'text' || o.list !== 'check' || o === editingObj) continue;
+      const L = textLayout(o), x = o.x + L.ix;
+      if (p.x < x - 4 || p.x > x + L.mw) continue;
+      const li = Math.floor((p.y - o.y) / L.lh);
+      if (li < 0 || li >= L.lines.length || !L.lines[li].trim()) continue;
+      pushHistory();
+      o.checks = o.checks || [];
+      o.checks[li] = !o.checks[li];
+      touchNote();
+      render();
+      return true;
+    }
+    return false;
   }
   function eraseAll() {
     const n = S.note.objects.filter((o) => o.type === 'stroke' || o.type === 'shape').length;
@@ -1374,12 +1645,16 @@
   /* ---------------- text editing ---------------- */
   let editor = null;
   let editingObj = null;
-  const TEXT_KEYS = ['size', 'bold', 'italic', 'underline', 'strike', 'bg'];
+  const TEXT_KEYS = ['size', 'bold', 'italic', 'underline', 'strike', 'bg', 'list', 'align', 'indent'];
+  const TEXT_DEF = { size: 20, bold: false, italic: false, underline: false, strike: false, bg: null, list: null, align: 'left', indent: 0 };
+  const editorPad = (style) => (style.indent || 0) * style.size * 1.6 + (style.list ? style.size * 1.6 : 0);
   function styleEditor() {
     if (!editor) return;
     const { ta, style } = editor;
     ta.style.font = textFont(style);
     ta.style.lineHeight = '1.3';
+    ta.style.paddingLeft = editorPad(style) + 'px';
+    ta.style.textAlign = style.align || 'left';
     ta.style.color = ink(editor.color);
     ta.style.textDecoration = [style.underline ? 'underline' : '', style.strike ? 'line-through' : ''].join(' ').trim() || 'none';
     ta.style.background = style.bg ? hexA(style.bg, 0.6) : 'rgba(127,127,127,.08)';
@@ -1388,7 +1663,7 @@
   function openTextEditor(obj, x, y) {
     closeTextEditor();
     const style = {};
-    TEXT_KEYS.forEach((k) => { style[k] = obj ? obj[k] ?? (k === 'size' ? 20 : k === 'bg' ? null : false) : S.textStyle[k]; });
+    TEXT_KEYS.forEach((k) => { style[k] = obj ? obj[k] ?? TEXT_DEF[k] : S.textStyle[k] ?? TEXT_DEF[k]; });
     const color = obj ? obj.color : S.colors.text;
     const ex = r1(obj ? obj.x : clamp(x, 0, PAGE_W - 40)), ey = r1(obj ? obj.y : Math.max(0, y));
     const ta = document.createElement('textarea');
@@ -1401,19 +1676,23 @@
     editor = { ta, obj, x: ex, y: ey, style, color, snap: snapshot() };
     editor.fit = () => {
       mctx.font = textFont(style);
-      const w = Math.max(160, ...ta.value.split('\n').map((l) => mctx.measureText(l).width + 30));
+      const w = Math.max(160, ...ta.value.split('\n').map((l) => mctx.measureText(l).width + 30)) + editorPad(style);
       ta.style.width = Math.min(w, PAGE_W - ex) + 'px';
       ta.style.height = 'auto';
       ta.style.height = ta.scrollHeight + 'px';
     };
     editingObj = obj || null;
     if (obj) { Object.assign(S.textStyle, style); S.colors.text = color; }
-    ta.addEventListener('input', editor.fit);
+    ta.addEventListener('input', () => { editor.fit(); requestRender(); });
     ta.addEventListener('keydown', (ev) => {
       ev.stopPropagation();
-      if (ev.key === 'Escape' || (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey))) { ev.preventDefault(); ta.blur(); }
+      if (ev.key === 'Escape' || (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey))) { ev.preventDefault(); closeTextEditor(); }
     });
-    ta.addEventListener('blur', () => closeTextEditor());
+    // stay open while the text settings panel is being used
+    ta.addEventListener('blur', (ev) => {
+      if (ev.relatedTarget && el.panel.contains(ev.relatedTarget)) return;
+      closeTextEditor();
+    });
     styleEditor();
     if (S.tool === 'text') renderPanel();
     render();
@@ -1426,6 +1705,7 @@
     editingObj = null;
     const text = ed.ta.value.replace(/\s+$/, '');
     ed.ta.remove();
+    if (ed.obj && ed.obj.checks) ed.obj.checks = ed.obj.checks.slice(0, text.split('\n').length);
     if (ed.obj) {
       const o = ed.obj;
       const changed = text !== o.text || ed.color !== o.color || TEXT_KEYS.some((k) => (o[k] ?? null) !== (ed.style[k] ?? null));
@@ -2284,6 +2564,13 @@
       const au = document.createElement('audio');
       au.controls = true;
       au.preload = 'metadata';
+      // recorded audio often reports no length until played; nudge the browser to work it out
+      au.addEventListener('loadedmetadata', () => {
+        if (au.duration !== Infinity && !Number.isNaN(au.duration)) return;
+        const back = () => { au.removeEventListener('timeupdate', back); au.currentTime = 0; };
+        au.addEventListener('timeupdate', back);
+        au.currentTime = 1e101;
+      });
       getBlob(r.blob).then((b) => { if (b) { const u = URL.createObjectURL(b); recUrls.push(u); au.src = u; } });
       const del = iconBtn('danger', 'Delete recording', ICON.trash, async () => {
         if (!confirm(`Delete "${r.name}"?`)) return;
@@ -2416,14 +2703,19 @@
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(n.title || 'Note')}</title><style>@page{size:A4;margin:0}html,body{margin:0}img{display:block;width:210mm;height:297mm;page-break-after:always;break-after:page}img:last-child{page-break-after:auto;break-after:auto}</style></head><body>${urls.map((u) => `<img src="${u}" alt="">`).join('')}</body></html>`;
     const fr = document.createElement('iframe');
     fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    let printed = false;
     fr.onload = () => {
+      // the frame can fire "load" twice (blank page, then the note); print only once
+      const d = fr.contentDocument;
+      if (printed || !d || !d.images.length) return;
+      printed = true;
       setTimeout(() => {
         try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { toast("Printing isn't available here."); }
         setTimeout(() => fr.remove(), 60000);
       }, 250);
     };
-    document.body.append(fr);
     fr.srcdoc = html;
+    document.body.append(fr);
     if (asPdf) toast('In the print window, choose "Save as PDF" as the printer.', 6000);
   }
   async function shareNote() {
@@ -2739,47 +3031,107 @@
     return b;
   }
   const railSep = () => { const d = document.createElement('div'); d.className = 'rail-sep'; return d; };
+  const COLOR_TOOLS = ['pen', 'highlighter', 'text', 'shape', 'tape', 'restyle'];
+  const colorToolOf = () => (COLOR_TOOLS.includes(S.tool) ? S.tool : S.tool === 'select' ? 'select' : 'pen');
+  S.recent = Object.assign({
+    pen: ['#1c2430', '#d1453b', '#2f6fd0', '#2e9d57', '#f2b01e'],
+    highlighter: ['#fff176', '#b9f6ca', '#80d8ff', '#ff9ecb', '#ffcc80'],
+  }, prefs.get('recent', {}));
+  const recentKey = (tool) => (tool === 'highlighter' ? 'highlighter' : 'pen');
+  function pushRecent(tool, c) {
+    if (!c) return;
+    const k = recentKey(tool);
+    S.recent[k] = [c, ...S.recent[k].filter((x) => x.toLowerCase() !== c.toLowerCase())].slice(0, 5);
+    prefs.set('recent', S.recent);
+  }
   function buildRail() {
     const r = el.rail;
     r.innerHTML = '';
-    const tog = railBtn('Show or hide tool settings', ICON.chevL, () => setPanel(!S.panelOpen));
-    tog.id = 'panelToggle';
-    r.append(tog, railSep());
-    RAIL.forEach(([id, label, ic]) => {
-      const b = railBtn(label, ICON[ic || S.shape], () => { if (S.tool === id) setPanel(!S.panelOpen); else setTool(id); });
+    const addTools = (list) => list.forEach(([id, label, ic]) => {
+      const b = railBtn(label, ICON[ic || S.shape], () => { if (S.tool === id && !S.reading) setPanel(!S.panelOpen); else setTool(id); });
       b.dataset.tool = id;
-      if (['pen', 'highlighter', 'text', 'shape'].includes(id)) { const d = document.createElement('span'); d.className = 'cdot'; b.append(d); }
+      if (COLOR_TOOLS.includes(id) && id !== 'shape') { const d = document.createElement('span'); d.className = 'cdot'; b.append(d); }
       r.append(b);
     });
+    addTools(RAIL);
     r.append(railSep());
+    const qc = document.createElement('div');
+    qc.id = 'quickColors';
+    qc.className = 'quick-colors';
+    r.append(qc);
+    const tb = document.createElement('button');
+    tb.className = 'rb thick-btn';
+    tb.id = 'thickBtn';
+    tb.title = 'Thickness and more settings';
+    tb.setAttribute('aria-label', tb.title);
+    tb.innerHTML = '<i></i>';
+    tb.onclick = () => setPanel(!S.panelOpen);
+    r.append(tb, railSep());
     const u = railBtn('Undo (Ctrl+Z)', ICON.undo, undo);
     u.id = 'undoBtn';
     const re = railBtn('Redo (Ctrl+Y)', ICON.redo, redo);
     re.id = 'redoBtn';
-    r.append(u, re);
+    r.append(u, re, railSep());
+    addTools(RAIL2);
+    const zl = railBtn('Zoom lock', ICON.zoomLock, toggleZoomLock);
+    zl.id = 'zoomLockBtn';
+    r.append(zl);
+  }
+  function renderQuick() {
+    const qc = $('#quickColors'), tb = $('#thickBtn');
+    if (!qc) return;
+    const tool = colorToolOf();
+    const hide = ['eraser', 'math'].includes(S.tool);
+    qc.hidden = hide;
+    if (tb) tb.hidden = hide;
+    const curObj = S.sel.find((o) => o.color);
+    const cur = tool === 'select' ? curObj && curObj.color : S.colors[tool];
+    qc.innerHTML = '';
+    S.recent[recentKey(tool)].forEach((c) => {
+      const b = document.createElement('button');
+      b.className = 'qc' + (cur && cur.toLowerCase() === c.toLowerCase() ? ' active' : '');
+      b.style.setProperty('--c', c);
+      b.title = c;
+      b.setAttribute('aria-label', 'Colour ' + c);
+      b.onclick = () => { if (tool === 'select') setSelColor(c); else setToolColor(tool, c); };
+      qc.append(b);
+    });
+    if (tb) {
+      const w = tool === 'select' ? 3 : S.widths[tool] || 3;
+      const i = $('i', tb);
+      i.style.height = clamp(w / 3, 1.5, 9) + 'px';
+    }
   }
   function updateRail() {
     el.rail.querySelectorAll('[data-tool]').forEach((b) => {
       const id = b.dataset.tool;
-      b.classList.toggle('active', id === S.tool);
+      b.classList.toggle('active', id === S.tool && !S.reading);
       if (id === 'shape') { const sv = $('svg', b); if (sv) sv.outerHTML = svg(ICON[S.shape]); }
       const d = $('.cdot', b);
       if (d) d.style.setProperty('--c', S.colors[id]);
     });
-    const u = $('#undoBtn'), r = $('#redoBtn'), t = $('#panelToggle');
+    const u = $('#undoBtn'), r = $('#redoBtn'), zl = $('#zoomLockBtn');
     if (u) u.disabled = !S.undo.length;
     if (r) r.disabled = !S.redo.length;
-    if (t) { t.innerHTML = svg(S.panelOpen ? ICON.chevR : ICON.chevL); t.classList.toggle('active', S.panelOpen); }
+    if (zl) { zl.classList.toggle('active', !!S.zoomLock); zl.setAttribute('aria-pressed', String(!!S.zoomLock)); }
     el.cv.dataset.tool = S.reading ? 'read' : S.tool;
+    renderQuick();
   }
-  const isDocked = () => window.innerWidth >= 1200;
+  function positionPanel() {
+    if (!S.panelOpen) return;
+    const anchor = el.rail.querySelector(`[data-tool="${S.tool}"]`) || $('#thickBtn');
+    const stage = $('#stage').getBoundingClientRect();
+    const ar = anchor.getBoundingClientRect();
+    const pw = el.panel.offsetWidth || 300;
+    el.panel.style.left = clamp(ar.left + ar.width / 2 - stage.left - pw / 2, 8, Math.max(8, stage.width - pw - 8)) + 'px';
+  }
   function setPanel(open) {
+    if (open && S.reading) return;
     S.panelOpen = open;
-    prefs.set('panelOpen', open);
     document.body.classList.toggle('panel-open', open);
+    if (!open) sizeOpen = false;
     updateRail();
-    if (open) renderPanel();
-    requestLayout();
+    if (open) { renderPanel(); positionPanel(); }
   }
   function setTool(t) {
     if (S.reading) setReading(false);
@@ -2787,13 +3139,20 @@
     closeTextEditor();
     S.tool = t;
     prefs.set('tool', t);
-    updateRail();
+    setPanel(false);
     renderPanel();
     render();
+  }
+  function toggleZoomLock() {
+    S.zoomLock = !S.zoomLock;
+    prefs.set('zoomLock', S.zoomLock);
+    updateRail();
+    toast(S.zoomLock ? "Zoom locked: pinching and the zoom buttons won't change the zoom." : 'Zoom unlocked');
   }
   function setToolColor(tool, c) {
     S.colors[tool] = c;
     prefs.set('colors', S.colors);
+    pushRecent(tool, c);
     if (tool === 'text') {
       if (editor) { editor.color = c; styleEditor(); }
       else {
@@ -2805,12 +3164,14 @@
     renderPanel();
   }
   function setSelColor(c) {
-    const items = S.sel.filter((o) => o.type !== 'image');
+    const items = S.sel.filter((o) => o.type !== 'image' && !(o.type === 'stroke' && o.tape && o.pattern != null));
     if (!items.length) return;
     pushHistory();
     items.forEach((o) => { o.color = c; });
+    pushRecent('pen', c);
     touchNote();
     render();
+    updateRail();
     renderPanel();
   }
 
@@ -2829,6 +3190,7 @@
     p.append(s);
     return s;
   }
+  function pDivider(p) { const d = document.createElement('div'); d.className = 'pdiv'; p.append(d); }
   function colorGrid(sec, colors, current, onPick, withNone) {
     const g = document.createElement('div');
     g.className = 'cgrid';
@@ -2849,6 +3211,15 @@
       b.onclick = () => onPick(c);
       g.append(b);
     });
+    if (window.EyeDropper) {
+      const e = document.createElement('button');
+      e.className = 'sw-tool';
+      e.title = 'Pick a colour from the screen';
+      e.setAttribute('aria-label', e.title);
+      e.innerHTML = svg(ICON.eyedropper);
+      e.onclick = async () => { try { const r = await new window.EyeDropper().open(); onPick(r.sRGBHex); } catch (_) { /* cancelled */ } };
+      g.append(e);
+    }
     const ci = document.createElement('input');
     ci.type = 'color';
     ci.className = 'sw-custom';
@@ -2859,35 +3230,77 @@
     g.append(ci);
     sec.append(g);
   }
-  function thickness(p, label, min, max, get, set, previewColor, onStart) {
-    const sec = pSection(p, label, String(get()));
+  // slider with − and + buttons, like a size stepper
+  function thickness(p, label, min, max, get, set, previewColor, onStart, kind) {
+    const sec = pSection(p, label, label ? String(get()) : null);
+    const step = kind === 'opacity' ? 5 : 1;
+    const row = document.createElement('div');
+    row.className = 'stepper' + (kind === 'opacity' ? ' opacity' : '');
+    const minus = document.createElement('button');
+    minus.className = 'step';
+    minus.innerHTML = svg(ICON.minus);
+    minus.setAttribute('aria-label', (label || (kind === 'opacity' ? 'Opacity' : 'Thickness')) + ' down');
+    const plus = document.createElement('button');
+    plus.className = 'step';
+    plus.innerHTML = svg(ICON.plus);
+    plus.setAttribute('aria-label', (label || (kind === 'opacity' ? 'Opacity' : 'Thickness')) + ' up');
+    const wrapR = document.createElement('div');
+    wrapR.className = 'range-wrap';
     const r = document.createElement('input');
     r.type = 'range';
     r.className = 'range';
     r.min = min;
     r.max = max;
+    r.step = step;
     r.value = get();
-    r.setAttribute('aria-label', label);
-    const pv = document.createElement('div');
-    pv.className = 'tprev';
-    pv.innerHTML = '<i></i>';
-    const i = $('i', pv);
-    const paint = () => { const v = Number(r.value); i.style.height = Math.min(30, v) + 'px'; i.style.setProperty('--c', previewColor || 'var(--text)'); sec.querySelector('.plabel span:last-child').textContent = v; };
-    if (onStart) r.addEventListener('pointerdown', onStart, { once: true });
+    r.setAttribute('aria-label', label || (kind === 'opacity' ? 'Opacity' : 'Thickness'));
+    const bubble = document.createElement('span');
+    bubble.className = 'bubble';
+    wrapR.append(r, bubble);
+    if (kind === 'opacity') wrapR.style.setProperty('--c', previewColor || '#fff176');
+    const paint = () => {
+      const v = Number(r.value);
+      bubble.textContent = v;
+      bubble.style.left = `calc(${((v - min) / (max - min)) * 100}% + ${(0.5 - (v - min) / (max - min)) * 22}px)`;
+      const lab = sec.querySelector('.plabel span:last-child');
+      if (lab) lab.textContent = v;
+    };
+    const apply = (v) => { r.value = clamp(v, min, max); set(Number(r.value)); paint(); };
+    minus.onclick = () => { if (onStart) onStart(); apply(Number(r.value) - step); };
+    plus.onclick = () => { if (onStart) onStart(); apply(Number(r.value) + step); };
+    if (onStart) r.addEventListener('pointerdown', onStart);
     r.addEventListener('input', () => { set(Number(r.value)); paint(); });
     paint();
-    sec.append(r, pv);
+    row.append(minus, wrapR, plus);
+    sec.append(row);
   }
   function toggle(p, title, desc, get, set) {
     const l = document.createElement('label');
     l.className = 'toggle';
-    l.innerHTML = '<input type="checkbox"><span><b></b><small></small></span>';
+    l.innerHTML = '<span><b></b><small></small></span><input type="checkbox" role="switch">';
     $('b', l).textContent = title;
-    $('small', l).textContent = desc;
+    $('small', l).textContent = desc || '';
+    if (!desc) $('small', l).remove();
     const cb = $('input', l);
     cb.checked = !!get();
     cb.onchange = () => set(cb.checked);
     p.append(l);
+  }
+  function radioRows(p, items, current, onPick) {
+    const box = document.createElement('div');
+    box.className = 'radios';
+    box.setAttribute('role', 'radiogroup');
+    items.forEach(([k, label, icon]) => {
+      const b = document.createElement('button');
+      b.className = 'radio-row' + (current === k ? ' on' : '');
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(current === k));
+      b.innerHTML = `<span class="radio"></span>${icon ? svg(icon) : ''}<span></span>`;
+      b.lastChild.textContent = label;
+      b.onclick = () => onPick(k);
+      box.append(b);
+    });
+    p.append(box);
   }
   function pButton(parent, label, icon, fn, cls) {
     const b = document.createElement('button');
@@ -2904,61 +3317,294 @@
     d.innerHTML = html;
     p.append(d);
   }
+  function iconRow(p, items, isOn, onPick, cls) {
+    const row = document.createElement('div');
+    row.className = 'fmt ' + (cls || '');
+    items.forEach(([k, label, icon]) => {
+      const b = document.createElement('button');
+      b.innerHTML = svg(icon);
+      b.title = label;
+      b.setAttribute('aria-label', label);
+      b.setAttribute('aria-pressed', String(!!isOn(k)));
+      b.className = isOn(k) ? 'on' : '';
+      b.onclick = () => onPick(k);
+      row.append(b);
+    });
+    p.append(row);
+    return row;
+  }
+  function lineStyleSvg(k) {
+    const base = 'viewBox="0 0 64 16" aria-hidden="true" class="ls-svg"';
+    if (k === 'taper') return `<svg ${base}><path d="M4 8Q32 1 60 8Q32 15 4 8Z" style="fill:currentColor;stroke:none"/></svg>`;
+    const dash = k === 'dash' ? 'stroke-dasharray="9 6"' : k === 'dot' ? 'stroke-dasharray="0.1 7"' : '';
+    return `<svg ${base}><path d="M5 8H59" ${dash} style="stroke-width:${k === 'dot' ? 3.6 : 3}"/></svg>`;
+  }
+  function tapeSample(cv, opts) {
+    const g = cv.getContext('2d');
+    const k = Math.min(2, window.devicePixelRatio || 1);
+    const w = cv.clientWidth || 220, h = cv.clientHeight || 64;
+    cv.width = w * k;
+    cv.height = h * k;
+    g.setTransform(k, 0, 0, k, 0, 0);
+    const pts = [];
+    for (let i = 0; i <= 30; i++) { const x = 16 + ((w - 32) * i) / 30; pts.push([x, h / 2 + Math.sin(i / 4.5) * 6, 0.5]); }
+    const prev = paperDark;
+    paperDark = false;
+    drawObj(g, Object.assign({ type: 'stroke', pts, pr: false }, opts));
+    paperDark = prev;
+  }
+  let sizeOpen = false;
+  let favRemove = false;
+  function presetOf(tool) {
+    if (tool === 'pen') return { id: uid(), tool, penType: S.penType, width: S.widths.pen, color: S.colors.pen, style: S.lineStyle };
+    return { id: uid(), tool, width: S.widths.highlighter, color: S.colors.highlighter, opacity: S.hlOpacity, tip: S.hlTip };
+  }
+  function applyFav(f) {
+    if (f.tool === 'pen') {
+      S.penType = f.penType || 'fountain';
+      S.lineStyle = f.style || 'solid';
+      S.widths.pen = f.width;
+      S.colors.pen = f.color;
+      prefs.set('penType', S.penType);
+      prefs.set('lineStyle', S.lineStyle);
+    } else {
+      S.widths.highlighter = f.width;
+      S.colors.highlighter = f.color;
+      S.hlOpacity = f.opacity ?? 45;
+      S.hlTip = f.tip || 'chisel';
+      prefs.set('hlOpacity', S.hlOpacity);
+      prefs.set('hlTip', S.hlTip);
+    }
+    prefs.set('widths', S.widths);
+    prefs.set('colors', S.colors);
+    updateRail();
+    renderPanel();
+  }
+  function favSection(p, tool) {
+    pDivider(p);
+    const mine = S.favPens.filter((f) => f.tool === tool);
+    const row = document.createElement('div');
+    row.className = 'fav-row';
+    mine.forEach((f) => {
+      const b = document.createElement('button');
+      b.className = 'fav' + (favRemove ? ' removing' : '');
+      b.title = favRemove ? 'Remove this favourite' : 'Use this favourite';
+      b.setAttribute('aria-label', b.title);
+      b.style.setProperty('--c', f.color);
+      b.innerHTML = svg(ICON[tool === 'pen' ? 'pen_' + (f.penType || 'fountain') : 'hl_' + (f.tip || 'chisel')]) + '<i></i>';
+      b.onclick = () => {
+        if (favRemove) {
+          S.favPens = S.favPens.filter((x) => x !== f);
+          prefs.set('favPens', S.favPens);
+          if (!S.favPens.some((x) => x.tool === tool)) favRemove = false;
+          renderPanel();
+          return;
+        }
+        applyFav(f);
+      };
+      row.append(b);
+    });
+    if (mine.length) p.append(row);
+    const ctl = document.createElement('div');
+    ctl.className = 'fav-ctl';
+    const add = document.createElement('button');
+    add.className = 'pill-btn';
+    add.title = 'Save the current settings as a favourite';
+    add.setAttribute('aria-label', add.title);
+    add.innerHTML = svg(ICON.plus);
+    add.onclick = () => {
+      if (S.favPens.filter((f) => f.tool === tool).length >= 12) { toast('You can keep up to 12 favourites here.'); return; }
+      S.favPens.push(presetOf(tool));
+      prefs.set('favPens', S.favPens);
+      favRemove = false;
+      renderPanel();
+      toast('Saved to favourites');
+    };
+    const del = document.createElement('button');
+    del.className = 'pill-btn' + (favRemove ? ' on' : '');
+    del.title = favRemove ? 'Done removing' : 'Remove favourites';
+    del.setAttribute('aria-label', del.title);
+    del.innerHTML = svg(favRemove ? ICON.close : ICON.trash);
+    del.disabled = !mine.length;
+    del.onclick = () => { favRemove = !favRemove; renderPanel(); };
+    ctl.append(add, del);
+    p.append(ctl);
+    if (!mine.length) hint(p, '<p class="center">Save your favourite settings here for quick access.</p>');
+    else if (favRemove) hint(p, '<p class="center">Tap a favourite to remove it.</p>');
+  }
   function renderPanel() {
     const p = el.panel;
     if (!p || !S.note) return;
     p.innerHTML = '';
     const H = (t) => { const h = document.createElement('div'); h.className = 'ph'; h.textContent = t; p.append(h); };
     const setW = (key) => (v) => { S.widths[key] = v; prefs.set('widths', S.widths); updateRail(); };
+    const typeRow = (items, current, onPick, colour) => {
+      const row = document.createElement('div');
+      row.className = 'pen-types';
+      items.forEach(([k, label, icon]) => {
+        const b = document.createElement('button');
+        b.className = 'pen-type' + (current === k ? ' on' : '');
+        b.title = label;
+        b.setAttribute('aria-label', label);
+        b.setAttribute('aria-pressed', String(current === k));
+        b.style.setProperty('--c', colour);
+        b.innerHTML = svg(icon) + '<i></i>';
+        b.onclick = () => onPick(k);
+        row.append(b);
+      });
+      p.append(row);
+    };
     switch (S.tool) {
-      case 'pen':
-        H('Pen');
-        thickness(p, 'Thickness', 1, 24, () => S.widths.pen, setW('pen'), S.colors.pen);
-        colorGrid(pSection(p, 'Colour'), PALETTE, S.colors.pen, (c) => setToolColor('pen', c));
-        toggle(p, 'Hold to snap shapes', 'Hold the pen still at the end of a stroke to turn it into a clean shape.', () => S.snap, (v) => { S.snap = v; prefs.set('snap', v); });
-        toggle(p, 'Draw with pen only', 'Fingers scroll and zoom instead of drawing. Turns on automatically with an S Pen.', () => S.penOnly, (v) => { S.penOnly = v; prefs.set('penOnly', v); });
+      case 'pen': {
+        typeRow(PEN_TYPES.map(([k, l]) => [k, l, ICON['pen_' + k]]), S.penType, (k) => { S.penType = k; prefs.set('penType', k); renderPanel(); }, S.colors.pen);
+        thickness(p, null, 1, 24, () => S.widths.pen, setW('pen'), S.colors.pen);
+        const ls = document.createElement('div');
+        ls.className = 'line-styles';
+        LINE_STYLES.forEach(([k, label]) => {
+          const b = document.createElement('button');
+          b.className = 'ls' + (S.lineStyle === k ? ' on' : '');
+          b.title = label;
+          b.setAttribute('aria-label', label + ' line');
+          b.setAttribute('aria-pressed', String(S.lineStyle === k));
+          b.innerHTML = lineStyleSvg(k);
+          b.onclick = () => { S.lineStyle = k; prefs.set('lineStyle', k); renderPanel(); };
+          ls.append(b);
+        });
+        p.append(ls);
+        toggle(p, 'Straighten lines', '', () => S.straighten.pen, (v) => { S.straighten.pen = v; prefs.set('straighten', S.straighten); });
+        toggle(p, 'Hold to snap shapes', '', () => S.snap, (v) => { S.snap = v; prefs.set('snap', v); });
+        toggle(p, 'Draw with pen only', 'Fingers scroll and zoom instead.', () => S.penOnly, (v) => { S.penOnly = v; prefs.set('penOnly', v); });
+        colorGrid(pSection(p), PALETTE, S.colors.pen, (c) => setToolColor('pen', c));
+        favSection(p, 'pen');
         break;
-      case 'highlighter':
-        H('Highlighter');
-        thickness(p, 'Thickness', 6, 48, () => S.widths.highlighter, setW('highlighter'), S.colors.highlighter);
-        colorGrid(pSection(p, 'Colour'), HL_PALETTE.concat(PALETTE.slice(4, 16)), S.colors.highlighter, (c) => setToolColor('highlighter', c));
+      }
+      case 'highlighter': {
+        typeRow([['chisel', 'Chisel tip', ICON.hl_chisel], ['round', 'Round tip', ICON.hl_round]], S.hlTip, (k) => { S.hlTip = k; prefs.set('hlTip', k); renderPanel(); }, S.colors.highlighter);
+        thickness(p, null, 6, 60, () => S.widths.highlighter, setW('highlighter'), S.colors.highlighter);
+        thickness(p, null, 10, 90, () => S.hlOpacity, (v) => { S.hlOpacity = v; prefs.set('hlOpacity', v); }, S.colors.highlighter, null, 'opacity');
+        toggle(p, 'Straighten lines', '', () => S.straighten.highlighter, (v) => { S.straighten.highlighter = v; prefs.set('straighten', S.straighten); });
+        toggle(p, 'Adjust thickness to text', '', () => S.fitText.highlighter, (v) => { S.fitText.highlighter = v; prefs.set('fitText', S.fitText); });
+        colorGrid(pSection(p), HL_PALETTE.concat(PALETTE.slice(4, 32)), S.colors.highlighter, (c) => setToolColor('highlighter', c));
+        favSection(p, 'highlighter');
         break;
-      case 'eraser': {
-        H('Eraser');
-        const sec = pSection(p, 'Erase');
-        const seg = document.createElement('div');
-        seg.className = 'seg';
-        [['stroke', 'Whole stroke'], ['area', 'Part of stroke']].forEach(([k, l]) => {
+      }
+      case 'tape': {
+        H('Tape');
+        const pv = document.createElement('div');
+        pv.className = 'tape-preview';
+        const cv = document.createElement('canvas');
+        pv.append(cv);
+        p.append(pv);
+        const sample = () => tapeSample(cv, { tape: true, width: Math.min(40, S.widths.tape), color: S.colors.tape, pattern: S.tapeKind === 'pattern' ? S.tapePattern : null });
+        requestAnimationFrame(sample);
+        thickness(p, null, 12, 80, () => S.widths.tape, (v) => { setW('tape')(v); sample(); }, S.colors.tape);
+        toggle(p, 'Straighten lines', '', () => S.straighten.tape, (v) => { S.straighten.tape = v; prefs.set('straighten', S.straighten); });
+        toggle(p, 'Adjust thickness to text', '', () => S.fitText.tape, (v) => { S.fitText.tape = v; prefs.set('fitText', S.fitText); });
+        pDivider(p);
+        const tabs = document.createElement('div');
+        tabs.className = 'seg-pill';
+        [['color', 'Colour'], ['pattern', 'Pattern']].forEach(([k, l]) => {
           const b = document.createElement('button');
           b.textContent = l;
-          b.className = S.eraseMode === k ? 'on' : '';
-          b.onclick = () => { S.eraseMode = k; prefs.set('eraseMode', k); renderPanel(); };
-          seg.append(b);
+          b.className = S.tapeKind === k ? 'on' : '';
+          b.onclick = () => { S.tapeKind = k; prefs.set('tapeKind', k); renderPanel(); };
+          tabs.append(b);
         });
-        sec.append(seg);
-        if (S.eraseMode === 'area') thickness(p, 'Eraser size', 8, 120, () => S.widths.eraser, setW('eraser'));
-        hint(p, '<p>The side button on the S Pen erases while held.</p>');
-        pButton(p, 'Erase all handwriting', ICON.trash, eraseAll, 'danger');
+        p.append(tabs);
+        if (S.tapeKind === 'color') {
+          colorGrid(pSection(p), PALETTE, S.colors.tape, (c) => setToolColor('tape', c));
+        } else {
+          const g = document.createElement('div');
+          g.className = 'tape-grid';
+          TAPE_PATTERNS.forEach((t, i) => {
+            const b = document.createElement('button');
+            b.className = 'tape-sw' + (S.tapePattern === i ? ' on' : '');
+            b.setAttribute('aria-label', `Tape pattern ${i + 1}`);
+            const c = document.createElement('canvas');
+            b.append(c);
+            b.onclick = () => { S.tapePattern = i; prefs.set('tapePattern', i); renderPanel(); };
+            g.append(b);
+            requestAnimationFrame(() => {
+              const k = Math.min(2, window.devicePixelRatio || 1);
+              c.width = (c.clientWidth || 100) * k;
+              c.height = (c.clientHeight || 26) * k;
+              const gc = c.getContext('2d');
+              gc.scale(k, k);
+              gc.fillStyle = tapePattern(gc, i);
+              gc.fillRect(0, 0, c.width, c.height);
+            });
+          });
+          p.append(g);
+        }
+        hint(p, '<p>Tap a piece of tape to show or hide what is underneath. Handy for studying.</p>');
+        break;
+      }
+      case 'restyle':
+        H('Change style');
+        thickness(p, 'Size', 1, 48, () => S.widths.restyle, setW('restyle'), S.colors.restyle);
+        colorGrid(pSection(p, 'Colour'), PALETTE, S.colors.restyle, (c) => setToolColor('restyle', c));
+        hint(p, '<p>Brush over handwriting, shapes or text to give them this colour and size.</p>');
+        break;
+      case 'eraser':
+        radioRows(p, [['stroke', 'Stroke eraser'], ['area', 'Area eraser']], S.eraseMode, (k) => { S.eraseMode = k; prefs.set('eraseMode', k); renderPanel(); });
+        if (S.eraseMode === 'area') thickness(p, null, 8, 120, () => S.widths.eraser, setW('eraser'));
+        toggle(p, 'Erase highlighter only', '', () => S.eraseHlOnly, (v) => { S.eraseHlOnly = v; if (v) S.eraseTapeOnly = false; prefs.set('eraseHlOnly', v); prefs.set('eraseTapeOnly', S.eraseTapeOnly); renderPanel(); });
+        toggle(p, 'Erase tape only', '', () => S.eraseTapeOnly, (v) => { S.eraseTapeOnly = v; if (v) S.eraseHlOnly = false; prefs.set('eraseTapeOnly', v); prefs.set('eraseHlOnly', S.eraseHlOnly); renderPanel(); });
+        pDivider(p);
+        pButton(p, 'Erase all handwriting', null, eraseAll, 'round-btn');
+        break;
+      case 'select': {
+        radioRows(p, [['lasso', 'Lasso', ICON.lasso], ['rect', 'Rectangle', ICON.rectSel]], S.lassoMode, (k) => { S.lassoMode = k; prefs.set('lassoMode', k); renderPanel(); });
+        toggle(p, 'Include partially selected objects', '', () => S.lassoPartial, (v) => { S.lassoPartial = v; prefs.set('lassoPartial', v); });
+        if (!S.sel.length) {
+          if (clip) { pDivider(p); pButton(p, 'Paste', ICON.copy, pasteClip); }
+          break;
+        }
+        pDivider(p);
+        const n = S.sel.length;
+        const sec = pSection(p, `${n} item${n > 1 ? 's' : ''} selected`);
+        const row = document.createElement('div');
+        row.className = 'prow';
+        pButton(row, 'Copy', ICON.copy, () => copySel());
+        pButton(row, 'Duplicate', ICON.dup, duplicateSel);
+        pButton(row, 'Delete', ICON.trash, deleteSelected, 'danger');
+        sec.append(row);
+        const lines = S.sel.filter((o) => o.type === 'stroke' || o.type === 'shape');
+        if (lines.length) thickness(p, 'Thickness', 1, 80, () => lines[0].width, (v) => { lines.forEach((o) => { o.width = v; }); touchNote(); render(); }, null, () => pushHistory());
+        if (S.sel.some((o) => o.type !== 'image')) {
+          const cur = S.sel.find((o) => o.type !== 'image');
+          colorGrid(pSection(p, 'Change colour'), PALETTE, cur && cur.color, setSelColor);
+        }
         break;
       }
       case 'text': {
-        H('Text');
         const ts = editor ? editor.style : S.textStyle;
-        const sizeSec = pSection(p, 'Size');
-        const f1 = document.createElement('div');
-        f1.className = 'fmt';
-        const minus = document.createElement('button'); minus.textContent = '−'; minus.title = 'Smaller'; minus.setAttribute('aria-label', 'Smaller text');
-        const val = document.createElement('span'); val.className = 'val'; val.textContent = ts.size;
-        const plus = document.createElement('button'); plus.textContent = '+'; plus.title = 'Larger'; plus.setAttribute('aria-label', 'Larger text');
-        const SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64, 80];
-        minus.onclick = () => setTextStyle({ size: [...SIZES].reverse().find((s) => s < ts.size) || SIZES[0] });
-        plus.onclick = () => setTextStyle({ size: SIZES.find((s) => s > ts.size) || SIZES[SIZES.length - 1] });
-        f1.append(minus, val, plus);
-        sizeSec.append(f1);
-        const styleSec = pSection(p, 'Style');
+        const sizeRow = document.createElement('div');
+        sizeRow.className = 'size-row';
+        sizeRow.innerHTML = `<span class="size-ic" aria-hidden="true">${svg('M4 7V5h9v2 M8.5 5v14 M6.5 19h4 M17 6v12 M14.5 8.5L17 6l2.5 2.5 M14.5 15.5L17 18l2.5-2.5')}</span>`;
+        const dd = document.createElement('button');
+        dd.className = 'size-dd';
+        dd.setAttribute('aria-label', 'Text size');
+        dd.setAttribute('aria-expanded', String(sizeOpen));
+        dd.innerHTML = `<span>${ts.size}</span>${svg(ICON.chevDown)}`;
+        dd.onclick = () => { sizeOpen = !sizeOpen; renderPanel(); };
+        sizeRow.append(dd);
+        p.append(sizeRow);
+        if (sizeOpen) {
+          const list = document.createElement('div');
+          list.className = 'size-list';
+          TEXT_SIZES.forEach((s) => {
+            const b = document.createElement('button');
+            b.textContent = s;
+            b.className = s === ts.size ? 'on' : '';
+            b.onclick = () => { sizeOpen = false; setTextStyle({ size: s }); };
+            list.append(b);
+          });
+          p.append(list);
+        }
         const f2 = document.createElement('div');
-        f2.className = 'fmt';
-        [['bold', 'B', 'Bold', 'font-weight:700'], ['italic', 'I', 'Italic', 'font-style:italic'], ['underline', 'U', 'Underline', 'text-decoration:underline'], ['strike', 'S', 'Strikethrough', 'text-decoration:line-through']].forEach(([k, t, label, css]) => {
+        f2.className = 'fmt spread';
+        [['bold', 'B', 'Bold', 'font-weight:700'], ['italic', 'I', 'Italic', 'font-style:italic;font-family:Georgia,serif'], ['underline', 'U', 'Underline', 'text-decoration:underline'], ['strike', 'S', 'Strikethrough', 'text-decoration:line-through']].forEach(([k, t, label, css]) => {
           const b = document.createElement('button');
           b.innerHTML = `<span style="${css}">${t}</span>`;
           b.title = label;
@@ -2968,10 +3614,19 @@
           b.onclick = () => setTextStyle({ [k]: !ts[k] });
           f2.append(b);
         });
-        styleSec.append(f2);
+        p.append(f2);
         colorGrid(pSection(p, 'Text colour'), PALETTE, editor ? editor.color : S.colors.text, (c) => setToolColor('text', c));
-        colorGrid(pSection(p, 'Highlight'), HL_PALETTE, ts.bg, (c) => setTextStyle({ bg: c }), true);
-        hint(p, '<p>Tap the page to type. Tap typed text to edit it. Press <code>Esc</code> or tap elsewhere when done.</p>');
+        colorGrid(pSection(p, 'Text background'), HL_PALETTE.slice(0, 7), ts.bg, (c) => setTextStyle({ bg: c }), true);
+        iconRow(p, [['check', 'Checklist', ICON.listCheck], ['bullet', 'Bulleted list', ICON.listBullet], ['number', 'Numbered list', ICON.listNumber]], (k) => ts.list === k, (k) => setTextStyle({ list: ts.list === k ? null : k }), 'spread');
+        iconRow(p, [['left', 'Align left', ICON.alignLeft], ['center', 'Align centre', ICON.alignCenter], ['right', 'Align right', ICON.alignRight], ['in', 'Increase indent', ICON.indent], ['out', 'Decrease indent', ICON.outdent]],
+          (k) => (k === 'in' || k === 'out' ? false : (ts.align || 'left') === k),
+          (k) => {
+            if (k === 'in') setTextStyle({ indent: clamp((ts.indent || 0) + 1, 0, 6) });
+            else if (k === 'out') setTextStyle({ indent: clamp((ts.indent || 0) - 1, 0, 6) });
+            else setTextStyle({ align: k });
+          }, 'spread');
+        pDivider(p);
+        pButton(p, 'Add text box', ICON.text, () => { const c = visibleCenter(); setPanel(false); openTextEditor(null, c.x - 80, c.y); }, 'round-btn');
         break;
       }
       case 'shape': {
@@ -2989,36 +3644,10 @@
           g.append(b);
         });
         sec.append(g);
-        toggle(p, 'Fill', 'Fill closed shapes with a light tint of their colour.', () => S.fill, (v) => { S.fill = v; prefs.set('fill', v); });
-        thickness(p, 'Thickness', 1, 24, () => S.widths.shape, setW('shape'), S.colors.shape);
-        colorGrid(pSection(p, 'Colour'), PALETTE, S.colors.shape, (c) => setToolColor('shape', c));
+        toggle(p, 'Fill', '', () => S.fill, (v) => { S.fill = v; prefs.set('fill', v); });
+        thickness(p, null, 1, 24, () => S.widths.shape, setW('shape'), S.colors.shape);
+        colorGrid(pSection(p), PALETTE, S.colors.shape, (c) => setToolColor('shape', c));
         hint(p, '<p>Drag on the page to draw. Hold <code>Shift</code> for a perfect square, circle or 45° line.</p>');
-        break;
-      }
-      case 'select': {
-        H('Lasso select');
-        if (!S.sel.length) {
-          hint(p, '<p>Draw a loop around handwriting, shapes, text or pictures to select them. Or tap a single item.</p><p>Hold <code>Shift</code> and tap to add or remove items.</p>');
-          if (clip) pButton(p, 'Paste', ICON.copy, pasteClip);
-          break;
-        }
-        const n = S.sel.length;
-        const sec = pSection(p, `${n} item${n > 1 ? 's' : ''} selected`);
-        const row = document.createElement('div');
-        row.className = 'prow';
-        pButton(row, 'Copy', ICON.copy, () => copySel());
-        pButton(row, 'Duplicate', ICON.dup, duplicateSel);
-        pButton(row, 'Delete', ICON.trash, deleteSelected, 'danger');
-        sec.append(row);
-        const lines = S.sel.filter((o) => o.type === 'stroke' || o.type === 'shape');
-        if (lines.length) {
-          thickness(p, 'Thickness', 1, 48, () => lines[0].width, (v) => { lines.forEach((o) => { o.width = v; }); touchNote(); render(); }, null, () => pushHistory());
-        }
-        if (S.sel.some((o) => o.type !== 'image')) {
-          const cur = S.sel.find((o) => o.type !== 'image');
-          colorGrid(pSection(p, 'Change colour'), PALETTE, cur && cur.color, setSelColor);
-        }
-        hint(p, '<p>Drag the selection to move it. Drag the corner square to resize.</p><p><code>Ctrl C</code> copy · <code>Ctrl V</code> paste · <code>Ctrl D</code> duplicate · <code>Del</code> delete</p>');
         break;
       }
       case 'math':
@@ -3026,10 +3655,11 @@
         hint(p, '<p>Tap the page to add a math card, then type one item per line:</p>'
           + '<p><code>y = x^2 - 3</code> draws a graph<br><code>f(x) = sin(x)/x</code> defines and draws a function<br><code>a = 2</code> makes a slider you can drag<br><code>15% of 80 =</code> shows the answer<br><code>f(3) =</code> uses your function</p>'
           + '<p>Drag a graph to move it; scroll or pinch to zoom. Variables are shared by every card in the note.</p>');
-        pButton(p, 'Add a math card here', ICON.math, () => { const c = visibleCenter(); addCard(c.x - 190, c.y - 120); });
+        pButton(p, 'Add a math card here', ICON.math, () => { const c = visibleCenter(); setPanel(false); addCard(c.x - 190, c.y - 120); });
         break;
       default: break;
     }
+    positionPanel();
   }
 
   /* ---------------- sidebar toggle ---------------- */
@@ -3076,8 +3706,8 @@
       else insertImageFiles(files, pagePt(e));
     });
     const onResize = () => {
-      document.body.classList.toggle('panel-docked', isDocked());
-      if (S.note && S.autoFit) {
+      positionPanel();
+      if (S.note && S.autoFit && !S.zoomLock) {
         const before = S.zoom;
         fitZoom();
         if (Math.abs(before - S.zoom) > 1e-3) redrawGraphs();
@@ -3098,8 +3728,9 @@
     $('#newNoteBtn').onclick = newNote;
     $('#newFolderBtn').onclick = newFolder;
     $('#backupBtn').onclick = backup;
-    $('#zoomInBtn').onclick = () => setZoom(S.zoom * 1.2);
-    $('#zoomOutBtn').onclick = () => setZoom(S.zoom / 1.2);
+    const zoomBy = (f) => { if (S.zoomLock) { toast('Zoom is locked. Tap the zoom lock button to unlock it.'); return; } setZoom(S.zoom * f); };
+    $('#zoomInBtn').onclick = () => zoomBy(1.2);
+    $('#zoomOutBtn').onclick = () => zoomBy(1 / 1.2);
     $('#zoomLabel').onclick = () => { fitZoom(); layoutCanvas(); redrawGraphs(); };
     $('#addPageBtn').onclick = addPage;
     $('#recState').onclick = toggleRecording;
@@ -3149,7 +3780,7 @@
       if (k === 'delete' || k === 'backspace') { if (S.sel.length) { e.preventDefault(); deleteSelected(); } return; }
       if (k === 'escape') { if (S.sel.length) { S.sel = []; selectionChanged(); render(); } return; }
       if (S.reading) return;
-      const map = { v: 'select', l: 'select', p: 'pen', h: 'highlighter', e: 'eraser', t: 'text', m: 'math', r: 'shape' };
+      const map = { v: 'select', l: 'select', p: 'pen', h: 'highlighter', e: 'eraser', t: 'text', m: 'math', r: 'shape', a: 'tape', c: 'restyle' };
       if (map[k]) setTool(map[k]);
     });
     document.addEventListener('fullscreenchange', () => { const b = $('#act-full'); if (b) b.classList.toggle('on', !!document.fullscreenElement); requestLayout(); });
@@ -3170,8 +3801,6 @@
 
   /* ---------------- start ---------------- */
   async function init() {
-    document.body.classList.toggle('panel-docked', isDocked());
-    document.body.classList.toggle('panel-open', S.panelOpen);
     if (window.innerWidth < 1100) document.body.classList.add('side-collapsed');
     buildActions();
     buildRail();
