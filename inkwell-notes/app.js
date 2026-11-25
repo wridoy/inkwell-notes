@@ -38,6 +38,7 @@
 
   /* ---------------- icons ---------------- */
   const ICON = {
+    cloud: 'M7 18h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.4 9.2 4.5 4.5 0 0 0 7 18z',
     select: 'M6 3l12 9-5.5 1.2L10 19z',
     lasso: 'M12 4c5 0 8.5 2.4 8.5 5.4S16.8 15 12 15s-8.5-2.6-8.5-5.6S7 4 12 4z M7.5 14c-1.3 1.6-1 3.6.8 4.4 1.4.7 1.6 1.9.7 2.9',
     keyboard: 'M3 6h18v12H3z M7 10h.01 M11 10h.01 M15 10h.01 M7 14h10',
@@ -227,7 +228,7 @@
   function setSave(t) { el.save.textContent = t; }
   function writeNote(note) {
     return Store.put('notes', note)
-      .then(() => { if (!saveTimers.size) setSave('Saved'); })
+      .then(() => { if (!saveTimers.size) setSave('Saved'); if (Sync) Sync.noteChanged(); })
       .catch(() => { setSave('Not saved'); toast('Could not save — storage may be full.'); });
   }
   function persist(note) {
@@ -245,7 +246,9 @@
     }
   }
   function persistFolders() {
-    if (S.storageOk) Store.put('meta', { key: 'folders', list: S.folders, updated: now() }).catch(() => {});
+    S.foldersUpdated = now();
+    if (S.storageOk) Store.put('meta', { key: 'folders', list: S.folders, updated: S.foldersUpdated }).catch(() => {});
+    if (Sync) Sync.noteChanged();
   }
   let sideTimer = 0;
   function touchNote() {
@@ -1487,6 +1490,8 @@
           return o.type === 'stroke' ? k / pts.length >= 0.9 : k === pts.length;
         });
         selectionChanged();
+        // show the selection actions (convert to math, copy, colour…) right away
+        if (S.sel.length && !S.panelOpen) setPanel(true);
       }
     } else if (a.mode === 'move' || a.mode === 'resize') {
       if (a.moved) { pushHistory(a.snap); touchNote(); }
@@ -1913,9 +1918,15 @@
     };
     const isLiteral = (n) => n.k === 'num' || (n.k === 'neg' && n.a.k === 'num');
     const reserved = (name) => name in CONST || !!BUILTIN[name] || name === 'x' || name === 'y';
+    // "A = 30°" or "x = 15 m/s": a plain number with a unit, so it still gets a slider
+    const UNIT_RE = /^\s*([A-Za-z]\w*)\s*=\s*(-?\d+(?:\.\d+)?)\s*(°|deg|m\/s\^2|m\/s²|m\/s|km\/h|kg|cm|mm|km|m|s|g|N|J|W|Hz)\s*$/;
     function prep(raw) {
-      let s = normalize(raw.trim());
+      const um = raw.match(UNIT_RE);
+      const unitTxt = um ? um[3] : null;
+      let s = um ? `${um[1]} = ${unitTxt === '°' || unitTxt === 'deg' ? `(${um[2]}*pi/180)` : um[2]}` : normalize(raw.trim());
+      s = s.replace(/(\d+(?:\.\d+)?)\s*°/g, '($1*pi/180)');
       const it = { raw };
+      if (um) { it.unit = unitTxt; it.unitNum = Number(um[2]); }
       if (!s) { it.kind = 'empty'; return it; }
       if (s.endsWith('=')) s = s.slice(0, -1).trim();
       if (!s) { it.kind = 'empty'; return it; }
@@ -1993,8 +2004,9 @@
             case 'plot': info = { kind: 'plot', fn: plotFn(compile(it.ast, env)) }; break;
             case 'vline': info = { kind: 'vline', x: compile(it.ast, env)(null) }; break;
             case 'assign': {
-              const lit = isLiteral(it.ast);
+              const lit = isLiteral(it.ast) || it.unit != null;
               info = { kind: 'var', name: it.name, value: it.value, literal: lit, text: lit ? '' : '= ' + fmtNum(it.value) };
+              if (it.unit != null) Object.assign(info, { unit: it.unit, slideValue: it.unitNum });
               break;
             }
             case 'expr':
@@ -2190,7 +2202,8 @@
         card.lines[i] = e.target.value;
         row._stale = true;
       } else if (e.target.type === 'range' && row._var) {
-        const txt = `${row._var} = ${fmtNum(Number(e.target.value))}`;
+        const u = row._unit || '', val = fmtNum(Number(e.target.value));
+        const txt = `${row._var} = ${u === '°' ? val + '°' : u ? val + ' ' + u : val}`;
         card.lines[i] = txt;
         $('.min', row).value = txt;
       }
@@ -2252,8 +2265,10 @@
           sl.hidden = false;
           const r = $('input', sl);
           if (row._stale !== false || !row._range) {
-            const v = info.value, big = Math.abs(v) > 10;
-            row._range = big ? { min: -Math.abs(v) * 2, max: Math.abs(v) * 2 } : { min: -10, max: 10 };
+            const v = info.slideValue != null ? info.slideValue : info.value, big = Math.abs(v) > 10;
+            row._range = info.unit === '°' || info.unit === 'deg' ? { min: 0, max: Math.max(90, Math.ceil(Math.abs(v) / 90) * 90) }
+              : info.unit && v >= 0 ? { min: 0, max: Math.max(10, Math.ceil(v * 2)) }
+              : big ? { min: v < 0 ? -Math.abs(v) * 2 : 0, max: Math.abs(v) * 2 } : { min: -10, max: 10 };
             r.min = row._range.min;
             r.max = row._range.max;
             r.step = (row._range.max - row._range.min) / 400;
@@ -2261,8 +2276,9 @@
             $('.smax', sl).textContent = fmtNum(row._range.max);
             row._stale = false;
           }
-          if (document.activeElement !== r) r.value = info.value;
+          if (document.activeElement !== r) r.value = info.slideValue != null ? info.slideValue : info.value;
           row._var = info.name;
+          row._unit = info.unit || '';
         } else {
           sl.hidden = true;
           row._range = null;
@@ -3160,6 +3176,8 @@
     mItem(m, 'Print', ICON.print, () => printNote(false));
     mItem(m, 'Search notes', ICON.search, openSearch);
     mSep(m);
+    mItem(m, 'Handwriting recognition…', ICON.edit, () => setTimeout(() => openMenu($('#moreBtn'), buildOnlineMenu), 0));
+    if (Sync) mItem(m, 'Sync with Dropbox…', ICON.cloud, () => setTimeout(() => openMenu($('#syncBtn'), buildSyncMenu), 0));
     mItem(m, 'Back up all notes', ICON.save, backup);
     mItem(m, 'Restore from file', ICON.file, () => $('#restoreInput').click());
     mSep(m);
@@ -3756,6 +3774,13 @@
         pButton(row, 'Duplicate', ICON.dup, duplicateSel);
         pButton(row, 'Delete', ICON.trash, deleteSelected, 'danger');
         sec.append(row);
+        if (inkStrokes().length && window.MathInk) {
+          const mrow = document.createElement('div');
+          mrow.className = 'prow';
+          pButton(mrow, 'Convert to math', ICON.math || ICON.sliders, convertSelToMath);
+          pButton(mrow, 'Teach symbol', ICON.edit, teachSymbol);
+          sec.append(mrow);
+        }
         const lines = S.sel.filter((o) => o.type === 'stroke' || o.type === 'shape');
         if (lines.length) thickness(p, 'Thickness', 1, 80, () => lines[0].width, (v) => { lines.forEach((o) => { o.width = v; }); touchNote(); render(); }, null, () => pushHistory());
         if (S.sel.some((o) => o.type !== 'image')) {
@@ -3987,6 +4012,185 @@
     window.addEventListener('appinstalled', () => { el.installBtn.hidden = true; toast('Inkwell installed'); });
   }
 
+  /* ---------------- handwritten maths ---------------- */
+  const ONLINE_KEY = 'inkwell-myscript';
+  const onlineKeys = () => { try { return JSON.parse(localStorage.getItem(ONLINE_KEY) || 'null'); } catch (e) { return null; } };
+  let learnedInk = [];
+  function inkStrokes() { return S.sel.filter((o) => o.type === 'stroke' && !isHL(o) && !isTape(o)); }
+  async function convertSelToMath() {
+    const ink = inkStrokes();
+    if (!ink.length || !window.MathInk) { toast('Select some handwriting first.'); return; }
+    const pts = ink.map((o) => o.pts.map((p) => [p[0], p[1]]));
+    let lines = null, how = 'offline';
+    const keys = onlineKeys();
+    if (keys && keys.app && keys.hmac && navigator.onLine) {
+      try { toast('Recognising…', 8000); lines = await MathInk.recognizeOnline(pts, keys); how = 'online'; }
+      catch (e) { toast(e.message + ' — using offline recognition.', 3000); }
+    }
+    if (!lines || !lines.length) lines = MathInk.recognize(pts);
+    if (!lines.length) { toast("Couldn't read that handwriting."); return; }
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity;
+    ink.forEach((o) => o.pts.forEach(([x, y]) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); }));
+    pushHistory();
+    S.note.objects = S.note.objects.filter((o) => !ink.includes(o));
+    S.sel = [];
+    const w = Math.max(360, Math.min(PAGE_W, x2 - x1 + 60));
+    const c = { id: uid(), x: r1(clamp(x1 - 10, 0, PAGE_W - w)), y: r1(Math.max(0, y1 - 10)), w, gh: 240, lines, view: { cx: 0, cy: 0, s: 30 } };
+    S.note.cards.push(c);
+    touchNote();
+    setTool('math');
+    renderCards();
+    autoGrow(c.y + 360);
+    render();
+    toast(`Read as: ${lines.join('  ·  ')}${how === 'offline' ? ' — tap a line to fix it if needed' : ''}`, 5000);
+  }
+  function teachSymbol() {
+    const ink = inkStrokes();
+    if (!ink.length || !window.MathInk) { toast('Select the handwriting of one symbol first.'); return; }
+    const sym = (prompt('Which symbol is this? (for example 7, x, +, ( or sqrt)') || '').trim();
+    if (!sym) return;
+    let x1 = Infinity, y1 = Infinity;
+    ink.forEach((o) => o.pts.forEach(([x, y]) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); }));
+    const strokes = ink.map((o) => o.pts.map((p) => [Math.round(p[0] - x1), Math.round(p[1] - y1)]));
+    MathInk.learn(strokes, sym);
+    learnedInk.unshift({ sym, strokes });
+    learnedInk = learnedInk.slice(0, 400);
+    if (S.storageOk) Store.put('meta', { key: 'ink-learned', list: learnedInk, updated: now() }).catch(() => {});
+    toast(`Learned "${sym}". Teach each symbol 2–3 times for the best results.`, 3500);
+  }
+  function buildOnlineMenu(m) {
+    const k = onlineKeys() || {};
+    mLabel(m, 'Handwriting recognition');
+    const p = document.createElement('div');
+    p.className = 'sync-info';
+    p.innerHTML = '<p>Offline recognition always works and learns the symbols you teach it. For better results when online, you can add keys from a free MyScript developer account.</p>'
+      + '<p class="muted">The keys are stored only on this device and never put in the app\'s code.</p>';
+    const a = document.createElement('input');
+    a.placeholder = 'Application key';
+    a.value = k.app || '';
+    const h = document.createElement('input');
+    h.placeholder = 'HMAC key';
+    h.type = 'password';
+    h.value = k.hmac || '';
+    [a, h].forEach((i) => { i.autocomplete = 'off'; i.spellcheck = false; i.setAttribute('aria-label', i.placeholder); p.append(i); });
+    m.append(p);
+    m.classList.add('wide');
+    mItem(m, 'Save keys', ICON.save, () => {
+      try {
+        if (a.value.trim() && h.value.trim()) localStorage.setItem(ONLINE_KEY, JSON.stringify({ app: a.value.trim(), hmac: h.value.trim() }));
+        else localStorage.removeItem(ONLINE_KEY);
+        toast(a.value.trim() ? 'Online recognition is on when connected.' : 'Online recognition is off.');
+      } catch (e) { toast('Could not save the keys on this device.'); }
+    });
+  }
+
+  /* ---------------- sync (Dropbox, works offline first) ---------------- */
+  const SYNC_TEXT = {
+    off: 'Sync is off', syncing: 'Syncing…', ok: 'Synced', offline: 'Offline — saved on this device', error: 'Sync problem', auth: 'Sign in to Dropbox again',
+  };
+  const Sync = window.InkwellSync ? window.InkwellSync({
+    pref: (k, d) => prefs.get(k, d), prefSet: (k, v) => prefs.set(k, v),
+    metaGet: (k) => Store.get('meta', k), metaPut: (v) => Store.put('meta', v), metaDel: (k) => Store.del('meta', k),
+    toast, notes: () => S.notes, folders: () => S.folders, foldersUpdated: () => S.foldersUpdated || 0,
+    setFolders(list, updated) {
+      const set = new Set(list.filter((f) => typeof f === 'string' && f));
+      S.notes.forEach((n) => { if (!n.deleted && n.folder) set.add(n.folder); });
+      if (!set.size) return;
+      S.folders = [...set];
+      S.foldersUpdated = updated;
+      if (S.storageOk) Store.put('meta', { key: 'folders', list: S.folders, updated }).catch(() => {});
+    },
+    validNote, blobIdsOf, getBlob,
+    hasBlob: async (id) => memBlobs.has(id) || (S.storageOk && !!(await Store.get('blobs', id).catch(() => null))),
+    putBlob: async (id, blob) => { if (S.storageOk) await Store.put('blobs', { id, blob, created: now() }).catch(() => memBlobs.set(id, blob)); else memBlobs.set(id, blob); imgCache.delete(id); },
+    serialize: (n) => JSON.parse(JSON.stringify(n)),
+    flush: flushSaves,
+    beforeLeave: flushSaves,
+    isEditing: (n) => S.note === n && (!!action || !!editor || !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('.mcard'))),
+    addNote(r) {
+      normalizeNote(r);
+      if (!r.deleted && !S.folders.includes(r.folder)) { S.folders.push(r.folder); persistFolders(); }
+      S.notes.push(r);
+      if (S.storageOk) Store.put('notes', r).catch(() => {});
+    },
+    replaceNote(l, r) {
+      normalizeNote(r);
+      for (const k of Object.keys(l)) if (!(k in r)) delete l[k];
+      Object.assign(l, r);
+      if (!l.deleted && !S.folders.includes(l.folder)) { S.folders.push(l.folder); persistFolders(); }
+      if (S.storageOk) Store.put('notes', l).catch(() => {});
+      if (S.note === l) syncOpenNoteChanged = true;
+    },
+    keepConflictCopy(l) {
+      const c = JSON.parse(JSON.stringify(l));
+      c.id = uid();
+      c.title = (l.title || 'Untitled') + ' (copy from this device)';
+      c.updated = now();
+      S.notes.push(c);
+      persist(c);
+      toast('A note was changed on two devices. Both versions were kept.', 5000);
+    },
+    refresh() {
+      if (syncOpenNoteChanged && S.note) {
+        syncOpenNoteChanged = false;
+        if (S.note.deleted || S.note.trashed) { openNote(liveNotes()[0] || S.note); return; }
+        const top = el.scroller.scrollTop, left = el.scroller.scrollLeft;
+        S.sel = [];
+        el.title.value = S.note.title;
+        renderCards();
+        renderRecordings();
+        layoutCanvas();
+        el.scroller.scrollTop = top;
+        el.scroller.scrollLeft = left;
+        render();
+      }
+      renderSidebar();
+    },
+    onStatus(s, d) {
+      const b = $('#syncBtn');
+      if (!b) return;
+      b.dataset.state = s;
+      b.title = SYNC_TEXT[s] + (d ? ' — ' + d : '');
+      b.setAttribute('aria-label', b.title);
+      b.hidden = false;
+    },
+  }) : null;
+  let syncOpenNoteChanged = false;
+  function buildSyncMenu(m) {
+    const info = Sync.info();
+    mLabel(m, 'Sync with Dropbox');
+    const p = document.createElement('div');
+    p.className = 'sync-info';
+    const when = info.last ? new Date(info.last).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'not yet';
+    if (info.connected) {
+      p.innerHTML = '<p></p><p class="muted"></p>';
+      p.children[0].textContent = SYNC_TEXT[info.status] + (info.account ? ` · ${info.account}` : '');
+      p.children[1].textContent = info.detail || `Last synced: ${when}. Notes are always saved on this device first, so you can keep writing offline.`;
+      m.append(p);
+      if (info.status === 'auth') mItem(m, 'Sign in again', ICON.cloud, () => Sync.connect().catch((e) => toast(e.message)));
+      else mItem(m, 'Sync now', ICON.cloud, () => Sync.syncNow());
+      mSep(m);
+      mItem(m, 'Disconnect this device', ICON.trash, () => {
+        if (confirm('Stop syncing on this device? Your notes stay here and in Dropbox.')) Sync.disconnect().then(() => toast('Sync turned off on this device'));
+      }, 'danger');
+      return;
+    }
+    p.innerHTML = '<p>Keep notes the same on your PC and tablet. Notes are saved on each device first and work offline; when you are online they are copied to a private folder in your own Dropbox.</p>'
+      + '<p class="muted">One-time setup: create a free Dropbox app (see the guide in SYNC-SETUP.md), then paste its <b>App key</b> here. Add this address as a redirect URI in the app:</p>'
+      + '<code class="sync-uri"></code>';
+    $('.sync-uri', p).textContent = info.redirect;
+    const inp = document.createElement('input');
+    inp.placeholder = 'Dropbox app key';
+    inp.value = info.key || '';
+    inp.autocomplete = 'off';
+    inp.spellcheck = false;
+    inp.setAttribute('aria-label', 'Dropbox app key');
+    p.append(inp);
+    m.append(p);
+    m.classList.add('wide');
+    mItem(m, 'Connect Dropbox', ICON.cloud, () => Sync.connect(inp.value).catch((e) => toast(e.message)));
+  }
+
   /* ---------------- start ---------------- */
   async function init() {
     if (window.innerWidth < 1100) document.body.classList.add('side-collapsed');
@@ -3997,7 +4201,9 @@
       const [notes, meta] = await Promise.all([Store.all('notes'), Store.all('meta')]);
       S.notes = (notes || []).filter(validNote).map(normalizeNote);
       const f = (meta || []).find((m) => m.key === 'folders');
-      if (f && Array.isArray(f.list) && f.list.length) S.folders = f.list;
+      if (f && Array.isArray(f.list) && f.list.length) { S.folders = f.list; S.foldersUpdated = f.updated || 0; }
+      const li = (meta || []).find((m) => m.key === 'ink-learned');
+      if (li && Array.isArray(li.list) && window.MathInk) { learnedInk = li.list; MathInk.loadLearned(learnedInk); }
     } catch (e) {
       S.storageOk = false;
       toast("Storage isn't available here, so notes won't be kept after closing.", 6000);
@@ -4014,6 +4220,9 @@
     const last = prefs.get('lastNote');
     openNote(liveNotes().find((n) => n.id === last) || visibleNotes()[0] || liveNotes()[0]);
     setTimeout(gcAllBlobs, 4000);
+    const sb = $('#syncBtn');
+    if (sb) { sb.innerHTML = svg(ICON.cloud) + '<i></i>'; sb.onclick = () => (Sync ? openMenu(sb, buildSyncMenu) : null); sb.hidden = !Sync; if (Sync) Sync.info && sb.setAttribute('data-state', 'off'); }
+    if (Sync && S.storageOk) Sync.start();
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }

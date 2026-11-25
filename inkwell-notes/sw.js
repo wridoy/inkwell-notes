@@ -1,10 +1,12 @@
 /* Offline support: network first, falling back to the cached copy. */
-const CACHE = 'inkwell-v3';
+const CACHE = 'inkwell-v4';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './sync.js',
+  './mathink.js',
   './manifest.webmanifest',
   './icons/icon.svg',
   './icons/icon-192.png',

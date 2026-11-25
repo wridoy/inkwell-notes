@@ -396,3 +396,21 @@ body:not(.panel-open) #toolPanel { display: none; }
   #scroller { padding: 12px 12px 90px; }
   #rail { justify-content: flex-start; }
 }
+
+/* sync */
+.sync-btn { position: relative; }
+.sync-btn[hidden] { display: none; }
+.sync-btn i { position: absolute; right: 5px; bottom: 6px; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--panel); background: var(--muted); }
+.sync-btn[data-state="ok"] i { background: #2e9d57; }
+.sync-btn[data-state="syncing"] i { background: #2f6fd0; animation: syncPulse 1s ease-in-out infinite; }
+.sync-btn[data-state="offline"] i { background: #f2b01e; }
+.sync-btn[data-state="error"] i, .sync-btn[data-state="auth"] i { background: var(--danger); }
+.sync-btn[data-state="off"] { opacity: .65; }
+.sync-btn[data-state="off"] i { display: none; }
+@keyframes syncPulse { 50% { opacity: .3; } }
+.menu.wide { width: min(360px, calc(100vw - 16px)); }
+.sync-info { padding: 4px 10px 8px; font-size: 13px; line-height: 1.45; display: flex; flex-direction: column; gap: 6px; }
+.sync-info p { margin: 0; }
+.sync-info .muted { color: var(--muted); }
+.sync-info code { display: block; font-size: 12px; padding: 6px 8px; border-radius: 8px; background: var(--panel-2); word-break: break-all; user-select: all; }
+.sync-info input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); color: inherit; font: inherit; }

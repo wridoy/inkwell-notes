@@ -36,6 +36,7 @@
         <input id="titleInput" placeholder="Title" aria-label="Note title" autocomplete="off">
         <button id="recState" class="rec-state" title="Stop recording" hidden></button>
         <span id="saveState" aria-live="polite"></span>
+        <button id="syncBtn" class="icon sync-btn" title="Sync is off" aria-label="Sync" data-state="off" hidden></button>
         <nav id="actions" aria-label="Note actions"></nav>
       </header>
       <nav id="rail" role="toolbar" aria-label="Tools"></nav>
@@ -85,6 +86,8 @@
   <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
   <input id="pdfInput" type="file" accept="application/pdf,.pdf" hidden>
   <div id="toast" role="status"></div>
+  <script src="sync.js"></script>
+  <script src="mathink.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
