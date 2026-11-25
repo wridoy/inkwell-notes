@@ -203,10 +203,11 @@
 
   const el = {
     folderList: $('#folderList'), noteList: $('#noteList'), search: $('#search'), title: $('#titleInput'), save: $('#saveState'),
-    scroller: $('#scroller'), wrap: $('#pageWrap'), cv: $('#page'), layer: $('#cardLayer'), panel: $('#toolPanel'), rail: $('#rail'),
+    scroller: $('#scroller'), wrap: $('#pageWrap'), cv: $('#page'), ink: $('#ink'), layer: $('#cardLayer'), panel: $('#toolPanel'), rail: $('#rail'),
     toast: $('#toast'), installBtn: $('#installBtn'),
   };
-  const ctx = el.cv.getContext('2d');
+  const ctx = el.cv.getContext('2d'); // paper and PDF pages, below math cards
+  const ictx = el.ink.getContext('2d'); // handwriting, shapes, text and pictures, above math cards
   const mctx = document.createElement('canvas').getContext('2d');
 
   let toastTimer = 0;
@@ -623,15 +624,17 @@
     const x0 = clamp(sl, 0, W), y0 = clamp(st, 0, H);
     const x1 = clamp(sl + el.scroller.clientWidth, 0, W), y1 = clamp(st + el.scroller.clientHeight, 0, H);
     view = { x0, y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
-    const s = el.cv.style;
-    s.left = x0 + 'px';
-    s.top = y0 + 'px';
-    s.width = view.w + 'px';
-    s.height = view.h + 'px';
     dpr = Math.min(window.devicePixelRatio || 1, 3);
     const pw = Math.max(1, Math.round(view.w * dpr)), ph = Math.max(1, Math.round(view.h * dpr));
-    if (el.cv.width !== pw) el.cv.width = pw;
-    if (el.cv.height !== ph) el.cv.height = ph;
+    for (const c of [el.cv, el.ink]) {
+      const s = c.style;
+      s.left = x0 + 'px';
+      s.top = y0 + 'px';
+      s.width = view.w + 'px';
+      s.height = view.h + 'px';
+      if (c.width !== pw) c.width = pw;
+      if (c.height !== ph) c.height = ph;
+    }
     render();
   }
   let layoutPending = false;
@@ -1172,17 +1175,22 @@
     if (!n) return;
     paperDark = (PAPERS[n.paper] || PAPERS.white).dark;
     const z = S.zoom;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, el.cv.width, el.cv.height);
-    ctx.setTransform(dpr * z, 0, 0, dpr * z, -view.x0 * dpr, -view.y0 * dpr);
+    const base = el.cv.getContext('2d');
+    for (const c of [base, ictx]) {
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, el.cv.width, el.cv.height);
+      c.setTransform(dpr * z, 0, 0, dpr * z, -view.x0 * dpr, -view.y0 * dpr);
+    }
     const vx = view.x0 / z, vy = view.y0 / z, vw = view.w / z, vh = view.h / z;
-    drawPaper(ctx, n, vx, vy, vw, vh);
+    drawPaper(base, n, vx, vy, vw, vh);
     for (const o of n.objects) {
       if (o === editingObj) continue;
       const b = bbox(o);
       if (b.x > vx + vw || b.y > vy + vh || b.x + b.w < vx || b.y + b.h < vy) continue;
-      drawObj(ctx, o);
+      // PDF pages stay under the math cards; everything you add goes over them
+      drawObj(o.locked ? base : ictx, o);
     }
+    const ctx = ictx; // the overlays below (live stroke, lasso, selection, eraser ring) go on the top layer
     if (editor && editor.style.list) {
       ctx.save();
       drawText(ctx, Object.assign({ x: editor.x, y: editor.y, text: editor.ta.value, color: editor.color, checks: editor.obj ? editor.obj.checks : null }, editor.style), true);
@@ -2096,6 +2104,13 @@
       if (e.target.closest('.mbtn')) return;
       const sx = e.clientX, sy = e.clientY, ox = card.x, oy = card.y, snap = snapshot();
       let moved = false;
+      // notes written on top of the card travel with it
+      const cw = root.offsetWidth, ch = root.offsetHeight;
+      const riders = S.note.objects.filter((o) => {
+        if (o.locked) return false;
+        const b = bbox(o);
+        return b.x >= ox - 4 && b.y >= oy - 4 && b.x + b.w <= ox + cw + 4 && b.y + b.h <= oy + ch + 4;
+      }).map((o) => ({ o, orig: clone(o) }));
       dragWith(head, e, (ev) => {
         const dx = (ev.clientX - sx) / S.zoom, dy = (ev.clientY - sy) / S.zoom;
         if (Math.abs(dx) + Math.abs(dy) > 1) moved = true;
@@ -2103,6 +2118,9 @@
         card.y = r1(Math.max(0, oy + dy));
         root.style.left = card.x + 'px';
         root.style.top = card.y + 'px';
+        const mx = card.x - ox, my = card.y - oy;
+        riders.forEach(({ o, orig }) => Object.assign(o, mapPts(clone(orig), (x, y) => [x + mx, y + my])));
+        if (riders.length) requestRender();
       }, () => {
         if (!moved) return;
         pushHistory(snap);
@@ -2651,17 +2669,15 @@
   function drawNoteTo(g, n, y0, h, lw = 1) {
     paperDark = (PAPERS[n.paper] || PAPERS.white).dark;
     drawPaper(g, n, 0, y0, PAGE_W, h, lw);
-    for (const o of n.objects) {
-      const b = bbox(o);
-      if (b.y > y0 + h || b.y + b.h < y0) continue;
-      drawObj(g, o);
-    }
+    const visible = n.objects.filter((o) => { const b = bbox(o); return !(b.y > y0 + h || b.y + b.h < y0); });
+    visible.filter((o) => o.locked).forEach((o) => drawObj(g, o));
     if (n === S.note) {
       cardEls.forEach((ce) => {
         const top = ce.card.y, bottom = top + ce.root.offsetHeight;
         if (bottom >= y0 && top <= y0 + h) drawCardTo(g, ce);
       });
     }
+    visible.filter((o) => !o.locked).forEach((o) => drawObj(g, o));
   }
   function contentHeight(n) {
     let maxY = 300;
@@ -3120,6 +3136,8 @@
     if (r) r.disabled = !S.redo.length;
     if (zl) { zl.classList.toggle('active', !!S.zoomLock); zl.setAttribute('aria-pressed', String(!!S.zoomLock)); }
     el.cv.dataset.tool = S.reading ? 'read' : S.tool;
+    // math cards can be edited with the graph tool; every other tool writes on top of them
+    document.body.classList.toggle('cards-live', S.tool === 'math' && !S.reading);
     renderQuick();
   }
   function positionPanel() {
@@ -3664,7 +3682,8 @@
         H('Math & graphs');
         hint(p, '<p>Tap the page to add a math card, then type one item per line:</p>'
           + '<p><code>y = x^2 - 3</code> draws a graph<br><code>f(x) = sin(x)/x</code> defines and draws a function<br><code>a = 2</code> makes a slider you can drag<br><code>15% of 80 =</code> shows the answer<br><code>f(3) =</code> uses your function</p>'
-          + '<p>Drag a graph to move it; scroll or pinch to zoom. Variables are shared by every card in the note.</p>');
+          + '<p>Drag a graph to move it; scroll or pinch to zoom. Variables are shared by every card in the note.</p>'
+          + '<p>To annotate a graph, switch to the pen, highlighter or any other tool and write on top of it. Your notes move with the card. Come back to this tool to edit the equations.</p>');
         pButton(p, 'Add a math card here', ICON.math, () => { const c = visibleCenter(); setPanel(false); addCard(c.x - 190, c.y - 120); });
         break;
       default: break;

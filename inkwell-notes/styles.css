@@ -151,6 +151,9 @@ button.icon:disabled { opacity: .35; background: none; }
 #page[data-tool="read"] { cursor: grab; }
 #cardLayer { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
 #cardLayer > * { pointer-events: auto; }
+/* math cards are only interactive with the graph tool; other tools write on top of them */
+body:not(.cards-live) #cardLayer > .mcard { pointer-events: none; }
+#ink { position: absolute; left: 0; top: 0; display: block; pointer-events: none; }
 
 #zoomCtl { position: absolute; left: 14px; bottom: 14px; z-index: 10; display: flex; flex-direction: column; align-items: center; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 4px; box-shadow: var(--shadow); }
 #zoomCtl button { width: 34px; height: 30px; border: 0; background: none; border-radius: 16px; display: grid; place-items: center; color: var(--text); padding: 0; }
