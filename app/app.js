@@ -207,7 +207,7 @@
     tapeKind: prefs.get('tapeKind', 'pattern'), tapePattern: prefs.get('tapePattern', 0), zoomLock: prefs.get('zoomLock', false),
     penOnly: prefs.get('penOnly', false), penSeen: prefs.get('penSeen', false),
     panelOpen: false, reading: false,
-    zoom: 1, autoFit: true, sel: [], undo: [], redo: [], storageOk: true,
+    zoom: 1, autoFit: true, sel: [], selCards: [], undo: [], redo: [], storageOk: true,
   };
   if (!ALL_TOOLS.includes(S.tool)) S.tool = 'pen';
 
@@ -840,7 +840,7 @@
     closeMenu();
     normalizeNote(n);
     S.note = n;
-    S.sel = [];
+    clearSel();
     S.undo = [];
     S.redo = [];
     action = null;
@@ -879,7 +879,7 @@
     S.note.objects = d.o;
     S.note.cards = d.c;
     if (d.h) S.note.height = d.h;
-    S.sel = [];
+    clearSel();
     touchNote();
     applyZoomSize();
     renderCards();
@@ -1160,10 +1160,25 @@
     }
     return inside;
   }
+  // math cards in the lasso selection (S.selCards), as page rectangles
+  function cardBox(c) {
+    const ce = cardEls.get(c.id);
+    return { x: c.x, y: c.y, w: ce ? ce.root.offsetWidth : c.w, h: ce ? ce.root.offsetHeight : c.gh + 60 };
+  }
+  function selCardBoxes() {
+    if (!S.note) return [];
+    if (S.selCards.some((c) => !S.note.cards.includes(c))) S.selCards = S.selCards.filter((c) => S.note.cards.includes(c));
+    return S.selCards.map(cardBox);
+  }
+  const hasSel = () => S.sel.length > 0 || selCardBoxes().length > 0;
+  function clearSel() { S.sel = []; S.selCards = []; }
+  function placeCard(c) {
+    const ce = cardEls.get(c.id);
+    if (ce) { ce.root.style.left = c.x + 'px'; ce.root.style.top = c.y + 'px'; }
+  }
   function selBox() {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const o of S.sel) {
-      const b = bbox(o);
+    for (const b of S.sel.map(bbox).concat(selCardBoxes())) {
       x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.w); y1 = Math.max(y1, b.y + b.h);
     }
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
@@ -1529,15 +1544,16 @@
     c.restore();
   }
   function drawSelection(c) {
-    if (!S.sel.length) return;
+    if (!hasSel()) return;
     const z = S.zoom;
     c.save();
     c.strokeStyle = '#2f6fd0';
     c.lineWidth = 1.5 / z;
-    if (S.sel.length > 1) {
+    const boxes = S.sel.map(bbox).concat(selCardBoxes());
+    if (boxes.length > 1) {
       c.globalAlpha = 0.5;
       c.setLineDash([3 / z, 3 / z]);
-      S.sel.forEach((o) => { const b = bbox(o); c.strokeRect(b.x, b.y, b.w, b.h); });
+      boxes.forEach((b) => c.strokeRect(b.x, b.y, b.w, b.h));
       c.globalAlpha = 1;
     }
     const b = selBox();
@@ -1689,9 +1705,10 @@
       eraseAt(p);
       requestRender();
     } else if (tool === 'select') {
-      const sb = S.sel.length ? selBox() : null;
+      const sb = hasSel() ? selBox() : null;
+      const cardOrig = () => S.selCards.map((c) => ({ x: c.x, y: c.y }));
       if (sb && onHandle(sb, p.x, p.y)) {
-        Object.assign(action, { mode: 'resize', box: sb, orig: S.sel.map(clone), snap: snapshot() });
+        Object.assign(action, { mode: 'resize', box: sb, orig: S.sel.map(clone), corig: cardOrig(), snap: snapshot() });
       } else {
         const h = topHit(p.x, p.y, 8 / S.zoom);
         if (h && e.shiftKey) {
@@ -1699,10 +1716,10 @@
           action.mode = 'none';
           selectionChanged();
         } else if (h || (sb && p.x >= sb.x && p.x <= sb.x + sb.w && p.y >= sb.y && p.y <= sb.y + sb.h)) {
-          if (h && !S.sel.includes(h)) { S.sel = [h]; selectionChanged(); }
-          Object.assign(action, { mode: 'move', orig: S.sel.map(clone), snap: snapshot() });
+          if (h && !S.sel.includes(h)) { S.sel = [h]; S.selCards = []; selectionChanged(); }
+          Object.assign(action, { mode: 'move', orig: S.sel.map(clone), corig: cardOrig(), snap: snapshot() });
         } else {
-          if (S.sel.length) { S.sel = []; selectionChanged(); }
+          if (hasSel()) { clearSel(); selectionChanged(); }
           Object.assign(action, { mode: 'lasso', lasso: [[p.x, p.y]], rect: S.lassoMode === 'rect' });
         }
         render();
@@ -1805,6 +1822,8 @@
       const dx = p.x - a.start.x, dy = p.y - a.start.y;
       if (Math.abs(dx) + Math.abs(dy) > 0.5) a.moved = true;
       S.sel.forEach((o, i) => Object.assign(o, mapPts(clone(a.orig[i]), (x, y) => [x + dx, y + dy])));
+      S.selCards.forEach((c, i) => { c.x = r1(a.corig[i].x + dx); c.y = r1(Math.max(0, a.corig[i].y + dy)); placeCard(c); });
+      autoGrow(p.y);
       requestRender();
     } else if (a.mode === 'resize') {
       const b = a.box;
@@ -1817,6 +1836,8 @@
         if (m.type === 'text') m.size = r1(clamp(a.orig[i].size * sy, 6, 300));
         Object.assign(o, m);
       });
+      // math cards keep their size; their corner follows the box
+      S.selCards.forEach((c, i) => { c.x = r1(b.x + (a.corig[i].x - b.x) * sx); c.y = r1(b.y + (a.corig[i].y - b.y) * sy); placeCard(c); });
       requestRender();
     }
   }
@@ -1867,12 +1888,20 @@
           }
           return o.type === 'stroke' ? k / pts.length >= 0.9 : k === pts.length;
         });
+        // math cards inside the loop come along with everything written on them
+        S.selCards = S.note.cards.filter((c) => {
+          const b = cardBox(c);
+          const k = corners(b).filter((q) => inPoly(q[0], q[1], poly)).length;
+          if (part) return k > 0 || inPoly(b.x + b.w / 2, b.y + b.h / 2, poly) || poly.some((q) => q[0] >= b.x && q[0] <= b.x + b.w && q[1] >= b.y && q[1] <= b.y + b.h);
+          return k === 4;
+        });
+        addCardRiders();
         selectionChanged();
         // show the selection actions (convert to math, copy, colour…) right away
-        if (S.sel.length && !S.panelOpen) setPanel(true);
+        if (hasSel() && !S.panelOpen) setPanel(true);
       }
     } else if (a.mode === 'move' || a.mode === 'resize') {
-      if (a.moved) { pushHistory(a.snap); touchNote(); }
+      if (a.moved) { pushHistory(a.snap); touchNote(); if (S.selCards.length) updateMath(); }
     } else if (a.mode === 'tap' && Math.hypot(p.x - a.start.x, p.y - a.start.y) < 10 / S.zoom) {
       if (a.tool === 'text') {
         const t = topHit(p.x, p.y, 4 / S.zoom);
@@ -1896,7 +1925,10 @@
     action = null;
     if (!a) return;
     clearTimeout(a.snapTimer);
-    if ((a.mode === 'move' || a.mode === 'resize') && a.moved) S.sel.forEach((o, i) => Object.assign(o, a.orig[i]));
+    if ((a.mode === 'move' || a.mode === 'resize') && a.moved) {
+      S.sel.forEach((o, i) => Object.assign(o, a.orig[i]));
+      S.selCards.forEach((c, i) => { Object.assign(c, a.corig[i]); placeCard(c); });
+    }
     if (a.tool === 'eraser' && a.erased) restore(a.snap);
     render();
   }
@@ -1979,7 +2011,7 @@
     if (!confirm('Erase all handwriting and shapes on this note? Typed text, pictures and math cards stay.')) return;
     pushHistory();
     S.note.objects = S.note.objects.filter((o) => o.type !== 'stroke' && o.type !== 'shape');
-    S.sel = [];
+    clearSel();
     touchNote();
     render();
     toast('Handwriting erased. Undo brings it back.');
@@ -2006,35 +2038,58 @@
   function endGesture() { gesture = null; redrawGraphs(); }
 
   /* ---------------- selection actions ---------------- */
-  let clip = null;
+  let clip = null; // { objs, cards } copied with the lasso
+  const clipCount = () => (clip ? clip.objs.length + clip.cards.length : 0);
+  const itemsLabel = (objs, cards) => [objs ? `${objs} item${objs > 1 ? 's' : ''}` : '', cards ? `${cards} math card${cards > 1 ? 's' : ''}` : ''].filter(Boolean).join(' and ');
   function selectionChanged() {
     updateRail();
     if (S.tool === 'select') renderPanel();
   }
+  // ink, text and pictures lying on a selected math card belong to it
+  function addCardRiders() {
+    if (!S.selCards.length) return;
+    const boxes = S.selCards.map(cardBox);
+    const extra = S.note.objects.filter((o) => {
+      if (o.locked || S.sel.includes(o)) return false;
+      const b = bbox(o);
+      return boxes.some((r) => b.x >= r.x - 4 && b.y >= r.y - 4 && b.x + b.w <= r.x + r.w + 4 && b.y + b.h <= r.y + r.h + 4);
+    });
+    if (extra.length) S.sel = S.sel.concat(extra);
+  }
   function copySel(quiet) {
-    if (!S.sel.length) return false;
-    clip = S.sel.map(clone);
-    if (!quiet) toast(`Copied ${clip.length} item${clip.length > 1 ? 's' : ''}`, 1200);
+    if (!hasSel()) return false;
+    clip = { objs: S.sel.map(clone), cards: S.selCards.map(clone) };
+    if (!quiet) toast(`Copied ${itemsLabel(clip.objs.length, clip.cards.length)}`, 1200);
     return true;
   }
   function pasteClip() {
-    if (!clip || !clip.length) return;
+    if (!clipCount() || !S.note) return;
     pushHistory();
-    const items = clip.map((o) => { const c = mapPts(clone(o), (x, y) => [x + 24, y + 24]); delete c.locked; return c; });
-    clip = items.map(clone);
+    const items = clip.objs.map((o) => { const c = mapPts(clone(o), (x, y) => [x + 24, y + 24]); delete c.locked; return c; });
+    const cards = clip.cards.map((c) => Object.assign(clone(c), { id: uid(), x: r1(c.x + 24), y: r1(c.y + 24) }));
+    clip = { objs: items.map(clone), cards: cards.map(clone) };
     S.note.objects.push(...items);
+    S.note.cards.push(...cards);
     if (S.tool !== 'select') setTool('select');
     S.sel = items;
+    S.selCards = cards;
+    if (cards.length) {
+      renderCards();
+      autoGrow(Math.max(...cards.map((c) => c.y + cardBox(c).h)));
+    }
     touchNote();
     selectionChanged();
     render();
   }
   function duplicateSel() { if (copySel(true)) pasteClip(); }
   function deleteSelected() {
-    if (!S.sel.length) return;
+    if (!hasSel()) return;
     pushHistory();
     S.note.objects = S.note.objects.filter((o) => !S.sel.includes(o));
-    S.sel = [];
+    const hadCards = S.selCards.length > 0;
+    if (hadCards) S.note.cards = S.note.cards.filter((c) => !S.selCards.includes(c));
+    clearSel();
+    if (hadCards) renderCards();
     touchNote();
     selectionChanged();
     render();
@@ -3646,7 +3701,7 @@
     const d = (j - i) * PAGE_STEP;
     S.note.objects.forEach((o) => { const p = pageOfObj(o); if (p === i) shiftObj(o, d); else if (p === j) shiftObj(o, -d); });
     S.note.cards.forEach((c) => { const p = pageOfY(c.y + 40); if (p === i) c.y += d; else if (p === j) c.y -= d; });
-    S.sel = [];
+    clearSel();
     touchNote();
     renderCards();
     render();
@@ -3661,7 +3716,7 @@
     S.note.cards = S.note.cards.filter((c) => pageOfY(c.y + 40) !== i);
     S.note.cards.forEach((c) => { if (pageOfY(c.y + 40) > i) c.y -= PAGE_STEP; });
     S.note.height -= PAGE_STEP;
-    S.sel = [];
+    clearSel();
     touchNote();
     applyZoomSize();
     renderCards();
@@ -3673,7 +3728,7 @@
   function setReading(on) {
     S.reading = on;
     closeTextEditor();
-    S.sel = [];
+    clearSel();
     document.body.classList.toggle('reading', on);
     const b = $('#act-read');
     if (b) b.classList.toggle('on', on);
@@ -3850,11 +3905,23 @@
     pen: ['#1c2430', '#d1453b', '#2f6fd0', '#2e9d57', '#f2b01e'],
     highlighter: ['#fff176', '#b9f6ca', '#80d8ff', '#ff9ecb', '#ffcc80'],
   }, prefs.get('recent', {}));
+  // swatches used to jump to the front when picked; put the default colours back in their slots once
+  if (!prefs.get('recentFixed', false)) {
+    const DEF = { pen: ['#1c2430', '#d1453b', '#2f6fd0', '#2e9d57', '#f2b01e'], highlighter: ['#fff176', '#b9f6ca', '#80d8ff', '#ff9ecb', '#ffcc80'] };
+    for (const k of Object.keys(DEF)) {
+      const has = (c) => S.recent[k].some((x) => x.toLowerCase() === c);
+      S.recent[k] = [...DEF[k].filter(has), ...S.recent[k].filter((x) => !DEF[k].includes(x.toLowerCase()))].slice(0, 5);
+    }
+    prefs.set('recent', S.recent);
+    prefs.set('recentFixed', true);
+  }
   const recentKey = (tool) => (tool === 'highlighter' ? 'highlighter' : 'pen');
   function pushRecent(tool, c) {
     if (!c) return;
     const k = recentKey(tool);
-    S.recent[k] = [c, ...S.recent[k].filter((x) => x.toLowerCase() !== c.toLowerCase())].slice(0, 5);
+    // swatches stay where they are; only a colour that isn't there yet takes the last slot
+    if (S.recent[k].some((x) => x.toLowerCase() === c.toLowerCase())) return;
+    S.recent[k] = [...S.recent[k].slice(0, 4), c];
     prefs.set('recent', S.recent);
   }
   function buildRail() {
@@ -3953,7 +4020,7 @@
   }
   function setTool(t) {
     if (S.reading) setReading(false);
-    if (t !== 'select' && S.sel.length) S.sel = [];
+    if (t !== 'select' && hasSel()) clearSel();
     closeTextEditor();
     S.tool = t;
     prefs.set('tool', t);
@@ -4379,13 +4446,12 @@
       case 'select': {
         radioRows(p, [['lasso', 'Lasso', ICON.lasso], ['rect', 'Rectangle', ICON.rectSel]], S.lassoMode, (k) => { S.lassoMode = k; prefs.set('lassoMode', k); renderPanel(); });
         toggle(p, 'Include partially selected objects', '', () => S.lassoPartial, (v) => { S.lassoPartial = v; prefs.set('lassoPartial', v); });
-        if (!S.sel.length) {
-          if (clip) { pDivider(p); pButton(p, 'Paste', ICON.copy, pasteClip); }
+        if (!hasSel()) {
+          if (clipCount()) { pDivider(p); pButton(p, 'Paste', ICON.copy, pasteClip); }
           break;
         }
         pDivider(p);
-        const n = S.sel.length;
-        const sec = pSection(p, `${n} item${n > 1 ? 's' : ''} selected`);
+        const sec = pSection(p, `${itemsLabel(S.sel.length, S.selCards.length)} selected`);
         const row = document.createElement('div');
         row.className = 'prow';
         pButton(row, 'Copy', ICON.copy, () => copySel());
@@ -4618,7 +4684,7 @@
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       const files = [...((e.clipboardData && e.clipboardData.files) || [])].filter((f) => f.type.startsWith('image/'));
       if (files.length) { e.preventDefault(); insertImageFiles(files); return; }
-      if (clip) { e.preventDefault(); pasteClip(); }
+      if (clipCount()) { e.preventDefault(); pasteClip(); }
     });
     document.addEventListener('keydown', (e) => {
       const t = e.target;
@@ -4632,14 +4698,14 @@
       if (mod && (k === '=' || k === '+')) { e.preventDefault(); setZoom(S.zoom * 1.2); return; }
       if (mod && k === '-') { e.preventDefault(); setZoom(S.zoom / 1.2); return; }
       if (mod && k === '0') { e.preventDefault(); fitWidth(); return; }
-      if (mod && k === 'c') { if (S.sel.length) { e.preventDefault(); copySel(); } return; }
-      if (mod && k === 'x') { if (S.sel.length) { e.preventDefault(); cutSel(); } return; }
+      if (mod && k === 'c') { if (hasSel()) { e.preventDefault(); copySel(); } return; }
+      if (mod && k === 'x') { if (hasSel()) { e.preventDefault(); cutSel(); } return; }
       if (mod && k === 'd') { e.preventDefault(); duplicateSel(); return; }
-      if (mod && k === 'a') { if (S.tool === 'select') { e.preventDefault(); S.sel = S.note.objects.filter((o) => !o.locked); selectionChanged(); render(); } return; }
+      if (mod && k === 'a') { if (S.tool === 'select') { e.preventDefault(); S.sel = S.note.objects.filter((o) => !o.locked); S.selCards = S.note.cards.slice(); selectionChanged(); render(); } return; }
       if (mod && k === 'p') { e.preventDefault(); printNote(false); return; }
       if (mod || e.altKey) return;
-      if (k === 'delete' || k === 'backspace') { if (S.sel.length) { e.preventDefault(); deleteSelected(); } return; }
-      if (k === 'escape') { if (S.sel.length) { S.sel = []; selectionChanged(); render(); } return; }
+      if (k === 'delete' || k === 'backspace') { if (hasSel()) { e.preventDefault(); deleteSelected(); } return; }
+      if (k === 'escape') { if (hasSel()) { clearSel(); selectionChanged(); render(); } return; }
       if (S.reading) return;
       const map = { k: 'cursor', v: 'select', l: 'select', p: 'pen', h: 'highlighter', e: 'eraser', t: 'text', m: 'math', r: 'shape', a: 'tape', c: 'restyle' };
       if (map[k]) setTool(map[k]);
@@ -4681,7 +4747,7 @@
     ink.forEach((o) => o.pts.forEach(([x, y]) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); }));
     pushHistory();
     S.note.objects = S.note.objects.filter((o) => !ink.includes(o));
-    S.sel = [];
+    clearSel();
     const w = Math.max(360, Math.min(PAGE_W, x2 - x1 + 60));
     const c = { id: uid(), x: r1(clamp(x1 - 10, 0, PAGE_W - w)), y: r1(Math.max(0, y1 - 10)), w, gh: 240, lines, view: { cx: 0, cy: 0, s: 30 } };
     S.note.cards.push(c);
@@ -4783,7 +4849,7 @@
         syncOpenNoteChanged = false;
         if (S.note.deleted || S.note.trashed) { openNote(liveNotes()[0] || S.note); return; }
         const top = el.scroller.scrollTop, left = el.scroller.scrollLeft;
-        S.sel = [];
+        clearSel();
         el.title.value = S.note.title;
         renderCards();
         renderRecordings();
