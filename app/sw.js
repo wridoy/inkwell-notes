@@ -1,5 +1,5 @@
-/* Offline support: network first, falling back to the cached copy. */
-const CACHE = 'inkwell-v13';
+/* Offline support: network first (skipping the browser's HTTP cache), falling back to the cached copy. */
+const CACHE = 'inkwell-v14';
 const ASSETS = [
   './',
   './index.html',
@@ -15,7 +15,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -30,7 +30,7 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' }) // always ask the server, so a new version shows up straight away
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

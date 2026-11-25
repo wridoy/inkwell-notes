@@ -4940,7 +4940,23 @@
     if (sb) { sb.innerHTML = svg(ICON.cloud) + '<i></i>'; sb.onclick = () => (Sync ? openMenu(sb, buildSyncMenu) : null); sb.hidden = !Sync; if (Sync) Sync.info && sb.setAttribute('data-state', 'off'); }
     if (Sync && S.storageOk) Sync.start();
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+      // an installed app often just resumes instead of reloading, so look for a new version
+      // whenever it comes back to the front, and switch to it once nothing is being drawn or typed
+      const hadController = !!navigator.serviceWorker.controller;
+      let pendingReload = false;
+      const reloadNow = () => { flushSaves(); setTimeout(() => location.reload(), 400); };
+      const tryReload = () => { if (pendingReload && !action && !editor) reloadNow(); };
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+        const check = () => reg.update().catch(() => {});
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); else tryReload(); });
+        setInterval(check, 30 * 60 * 1000);
+      }).catch(() => {});
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController || pendingReload) return;
+        pendingReload = true;
+        if (document.hidden || (!action && !editor)) { toast('Updating Inkwell…', 1500); reloadNow(); }
+        else document.addEventListener('pointerup', () => setTimeout(tryReload, 300));
+      });
     }
   }
   init();
