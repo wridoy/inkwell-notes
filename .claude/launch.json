@@ -4,7 +4,7 @@
     {
       "name": "inkwell",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["inkwell-notes/server.js"],
+      "runtimeArgs": ["app/server.js"],
       "port": 5173
     }
   ]

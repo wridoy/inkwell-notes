@@ -1,4 +1,4 @@
-# Publishes the Inkwell app (the inkwell-notes folder) to GitHub Pages on every push to main.
+# Publishes the Inkwell app (the app folder) to GitHub Pages on every push to main.
 name: Publish to GitHub Pages
 
 on:
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: inkwell-notes
+          path: app
 
   # 2. publish it (runs after the package is fully saved)
   deploy:
