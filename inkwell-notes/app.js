@@ -1918,15 +1918,9 @@
     };
     const isLiteral = (n) => n.k === 'num' || (n.k === 'neg' && n.a.k === 'num');
     const reserved = (name) => name in CONST || !!BUILTIN[name] || name === 'x' || name === 'y';
-    // "A = 30°" or "x = 15 m/s": a plain number with a unit, so it still gets a slider
-    const UNIT_RE = /^\s*([A-Za-z]\w*)\s*=\s*(-?\d+(?:\.\d+)?)\s*(°|deg|m\/s\^2|m\/s²|m\/s|km\/h|kg|cm|mm|km|m|s|g|N|J|W|Hz)\s*$/;
     function prep(raw) {
-      const um = raw.match(UNIT_RE);
-      const unitTxt = um ? um[3] : null;
-      let s = um ? `${um[1]} = ${unitTxt === '°' || unitTxt === 'deg' ? `(${um[2]}*pi/180)` : um[2]}` : normalize(raw.trim());
-      s = s.replace(/(\d+(?:\.\d+)?)\s*°/g, '($1*pi/180)');
+      let s = normalize(raw.trim());
       const it = { raw };
-      if (um) { it.unit = unitTxt; it.unitNum = Number(um[2]); }
       if (!s) { it.kind = 'empty'; return it; }
       if (s.endsWith('=')) s = s.slice(0, -1).trim();
       if (!s) { it.kind = 'empty'; return it; }
@@ -2004,9 +1998,8 @@
             case 'plot': info = { kind: 'plot', fn: plotFn(compile(it.ast, env)) }; break;
             case 'vline': info = { kind: 'vline', x: compile(it.ast, env)(null) }; break;
             case 'assign': {
-              const lit = isLiteral(it.ast) || it.unit != null;
+              const lit = isLiteral(it.ast);
               info = { kind: 'var', name: it.name, value: it.value, literal: lit, text: lit ? '' : '= ' + fmtNum(it.value) };
-              if (it.unit != null) Object.assign(info, { unit: it.unit, slideValue: it.unitNum });
               break;
             }
             case 'expr':
@@ -2202,13 +2195,18 @@
         card.lines[i] = e.target.value;
         row._stale = true;
       } else if (e.target.type === 'range' && row._var) {
-        const u = row._unit || '', val = fmtNum(Number(e.target.value));
-        const txt = `${row._var} = ${u === '°' ? val + '°' : u ? val + ' ' + u : val}`;
+        const txt = `${row._var} = ${fmtNum(Number(e.target.value))}`;
         card.lines[i] = txt;
         $('.min', row).value = txt;
       }
       touchNote();
       updateMath();
+    });
+    ce.rows.addEventListener('click', (e) => {
+      const d = e.target.closest('.mdot.on');
+      if (!d) return;
+      const i = rowIndex(ce, d);
+      if (i >= 0) openLinePop(ce, i, ce.rows.children[i]);
     });
     ce.rows.addEventListener('keydown', (e) => {
       if (!e.target.matches('.min')) return;
@@ -2219,6 +2217,7 @@
         const pos = e.target.selectionStart ?? e.target.value.length;
         const v = e.target.value;
         card.lines.splice(i, 1, v.slice(0, pos), v.slice(pos));
+        if (card.lstyle) card.lstyle.splice(i + 1, 0, null);
         buildRows(ce);
         updateMath();
         touchNote();
@@ -2227,6 +2226,7 @@
         e.preventDefault();
         const prevLen = card.lines[i - 1].length;
         card.lines.splice(i - 1, 2, card.lines[i - 1] + card.lines[i]);
+        if (card.lstyle) card.lstyle.splice(i, 1);
         buildRows(ce);
         updateMath();
         touchNote();
@@ -2253,22 +2253,24 @@
         const isErr = info.kind === 'error';
         row.classList.toggle('err', isErr);
         let color = null;
+        const ls = lineStyleOf(ce.card, i);
         if (info.kind === 'plot' || info.kind === 'vline') {
-          color = GRAPH_COLORS[ci++ % GRAPH_COLORS.length];
-          ce.plots.push(Object.assign({ color }, info));
+          color = (ls && ls.color) || GRAPH_COLORS[ci % GRAPH_COLORS.length];
+          ci++;
+          ce.plots.push(Object.assign({ color, idx: i, width: (ls && ls.width) || 2.5, dash: (ls && ls.dash) || 'solid', hidden: !!(ls && ls.hidden) }, info));
         }
-        dot.style.background = color || 'transparent';
+        dot.style.background = color && !(ls && ls.hidden) ? color : 'transparent';
+        dot.style.borderColor = color && ls && ls.hidden ? color : '';
         dot.classList.toggle('on', !!color);
+        dot.title = color ? 'Line colour and style' : '';
         out.textContent = isErr ? info.err : info.text || '';
         out.title = isErr ? info.err : '';
         if (info.kind === 'var' && info.literal) {
           sl.hidden = false;
           const r = $('input', sl);
           if (row._stale !== false || !row._range) {
-            const v = info.slideValue != null ? info.slideValue : info.value, big = Math.abs(v) > 10;
-            row._range = info.unit === '°' || info.unit === 'deg' ? { min: 0, max: Math.max(90, Math.ceil(Math.abs(v) / 90) * 90) }
-              : info.unit && v >= 0 ? { min: 0, max: Math.max(10, Math.ceil(v * 2)) }
-              : big ? { min: v < 0 ? -Math.abs(v) * 2 : 0, max: Math.abs(v) * 2 } : { min: -10, max: 10 };
+            const v = info.value, big = Math.abs(v) > 10;
+            row._range = big ? { min: v < 0 ? -Math.abs(v) * 2 : 0, max: Math.abs(v) * 2 } : { min: -10, max: 10 };
             r.min = row._range.min;
             r.max = row._range.max;
             r.step = (row._range.max - row._range.min) / 400;
@@ -2276,9 +2278,8 @@
             $('.smax', sl).textContent = fmtNum(row._range.max);
             row._stale = false;
           }
-          if (document.activeElement !== r) r.value = info.slideValue != null ? info.slideValue : info.value;
+          if (document.activeElement !== r) r.value = info.value;
           row._var = info.name;
-          row._unit = info.unit || '';
         } else {
           sl.hidden = true;
           row._range = null;
@@ -2288,6 +2289,74 @@
       ce.graphBox.hidden = !ce.plots.length;
       if (ce.plots.length) drawGraph(ce);
     }
+  }
+
+  /* per-line graph style: colour, thickness, line style, show/hide */
+  const LINE_COLORS = ['#d1453b', '#2f6fd0', '#2e9d57', '#e8743b', '#7b4fd6', '#1c2430', '#0f9fa8', '#e85a8c'];
+  const lineStyleOf = (card, i) => (card.lstyle && card.lstyle[i]) || null;
+  function setLineStyle(ce, i, patch) {
+    const c = ce.card;
+    c.lstyle = c.lstyle || [];
+    while (c.lstyle.length < c.lines.length) c.lstyle.push(null);
+    c.lstyle[i] = Object.assign({}, c.lstyle[i] || {}, patch);
+    touchNote();
+    updateMath();
+  }
+  function closeLinePop() { document.querySelectorAll('.lpop').forEach((p) => p.remove()); }
+  function openLinePop(ce, i, row) {
+    closeLinePop();
+    const plot = ce.plots.find((p) => p.idx === i);
+    if (!plot) return;
+    const st = lineStyleOf(ce.card, i) || {};
+    const pop = document.createElement('div');
+    pop.className = 'lpop';
+    pop.addEventListener('pointerdown', (e) => e.stopPropagation());
+    const head = document.createElement('div');
+    head.className = 'lpop-head';
+    head.innerHTML = '<span>Line</span><label class="toggle" title="Show this line"><input type="checkbox" role="switch" aria-label="Show this line"></label>';
+    const show = $('input', head);
+    show.checked = !st.hidden;
+    show.onchange = () => setLineStyle(ce, i, { hidden: !show.checked });
+    const mid = document.createElement('div');
+    mid.className = 'lpop-mid';
+    const wbox = document.createElement('label');
+    wbox.className = 'lpop-w';
+    wbox.innerHTML = '<span title="Thickness">≡</span><input type="number" min="0.5" max="10" step="0.5" aria-label="Line thickness">';
+    const win = $('input', wbox);
+    win.value = st.width || 2.5;
+    win.oninput = () => { const v = clamp(Number(win.value) || 2.5, 0.5, 10); setLineStyle(ce, i, { width: v }); };
+    const dashes = document.createElement('div');
+    dashes.className = 'lpop-dash';
+    [['solid', 'Solid'], ['dash', 'Dashed'], ['dot', 'Dotted']].forEach(([k, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.title = label;
+      b.setAttribute('aria-label', label);
+      b.className = (st.dash || 'solid') === k ? 'on' : '';
+      b.innerHTML = `<svg viewBox="0 0 24 24"><path d="M4 20L20 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" ${k === 'dash' ? 'stroke-dasharray="5 4"' : k === 'dot' ? 'stroke-dasharray="0.1 4"' : ''}/></svg>`;
+      b.onclick = () => { dashes.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); setLineStyle(ce, i, { dash: k }); };
+      dashes.append(b);
+    });
+    mid.append(wbox, dashes);
+    const sw = document.createElement('div');
+    sw.className = 'lpop-colors';
+    LINE_COLORS.forEach((col) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.style.background = col;
+      b.title = col;
+      b.setAttribute('aria-label', 'Colour ' + col);
+      if ((st.color || plot.color).toLowerCase() === col) b.classList.add('on');
+      b.onclick = () => { sw.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); setLineStyle(ce, i, { color: col }); };
+      sw.append(b);
+    });
+    pop.append(head, mid, sw);
+    ce.root.append(pop);
+    pop.style.top = (ce.rows.offsetTop + row.offsetTop + row.offsetHeight) + 'px';
+    setTimeout(() => {
+      const off = (e) => { if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener('pointerdown', off, true); } };
+      document.addEventListener('pointerdown', off, true);
+    }, 0);
   }
 
   /* ---------------- graphs ---------------- */
@@ -2380,8 +2449,10 @@
     if (o.xAxis && o.xLabel) { g.textAlign = 'right'; g.textBaseline = 'bottom'; g.fillText(o.xLabel, W - 8, clamp(y0 - 6, 18, H - 4)); }
     if (o.yAxis && o.yLabel) { g.textAlign = 'left'; g.textBaseline = 'top'; g.fillText(o.yLabel, clamp(x0 + 10, 4, W - 60), 4); }
     for (const pl of ce.plots) {
+      if (pl.hidden) continue;
       g.strokeStyle = pl.color;
-      g.lineWidth = 2.25;
+      g.lineWidth = pl.width || 2.5;
+      g.setLineDash(pl.dash === 'dash' ? [g.lineWidth * 3.2, g.lineWidth * 2.4] : pl.dash === 'dot' ? [0.01, g.lineWidth * 2.4] : []);
       g.lineJoin = 'round';
       g.lineCap = 'round';
       g.beginPath();
@@ -2405,6 +2476,7 @@
       }
       g.stroke();
     }
+    g.setLineDash([]);
     if (ce.set && !ce.set.hidden) syncGraphSettings(ce, true);
   }
   function graphLocal(ce, clientX, clientY) {
@@ -3177,7 +3249,7 @@
     mItem(m, 'Search notes', ICON.search, openSearch);
     mSep(m);
     mItem(m, 'Handwriting recognition…', ICON.edit, () => setTimeout(() => openMenu($('#moreBtn'), buildOnlineMenu), 0));
-    if (Sync) mItem(m, 'Sync with Dropbox…', ICON.cloud, () => setTimeout(() => openMenu($('#syncBtn'), buildSyncMenu), 0));
+    if (Sync) mItem(m, 'Sync with Google Drive…', ICON.cloud, () => setTimeout(() => openMenu($('#syncBtn'), buildSyncMenu), 0));
     mItem(m, 'Back up all notes', ICON.save, backup);
     mItem(m, 'Restore from file', ICON.file, () => $('#restoreInput').click());
     mSep(m);
@@ -4084,9 +4156,9 @@
     });
   }
 
-  /* ---------------- sync (Dropbox, works offline first) ---------------- */
+  /* ---------------- sync (Google Drive, works offline first) ---------------- */
   const SYNC_TEXT = {
-    off: 'Sync is off', syncing: 'Syncing…', ok: 'Synced', offline: 'Offline — saved on this device', error: 'Sync problem', auth: 'Sign in to Dropbox again',
+    off: 'Sync is off', syncing: 'Syncing…', ok: 'Synced', offline: 'Offline — saved on this device', error: 'Sync problem', auth: 'Sync paused — tap to sign in again',
   };
   const Sync = window.InkwellSync ? window.InkwellSync({
     pref: (k, d) => prefs.get(k, d), prefSet: (k, v) => prefs.set(k, v),
@@ -4158,7 +4230,7 @@
   let syncOpenNoteChanged = false;
   function buildSyncMenu(m) {
     const info = Sync.info();
-    mLabel(m, 'Sync with Dropbox');
+    mLabel(m, 'Sync with Google Drive');
     const p = document.createElement('div');
     p.className = 'sync-info';
     const when = info.last ? new Date(info.last).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'not yet';
@@ -4167,28 +4239,29 @@
       p.children[0].textContent = SYNC_TEXT[info.status] + (info.account ? ` · ${info.account}` : '');
       p.children[1].textContent = info.detail || `Last synced: ${when}. Notes are always saved on this device first, so you can keep writing offline.`;
       m.append(p);
-      if (info.status === 'auth') mItem(m, 'Sign in again', ICON.cloud, () => Sync.connect().catch((e) => toast(e.message)));
+      if (info.status === 'auth') mItem(m, 'Sign in again', ICON.cloud, () => { try { Sync.resume(); } catch (e) { toast(e.message); } });
       else mItem(m, 'Sync now', ICON.cloud, () => Sync.syncNow());
       mSep(m);
       mItem(m, 'Disconnect this device', ICON.trash, () => {
-        if (confirm('Stop syncing on this device? Your notes stay here and in Dropbox.')) Sync.disconnect().then(() => toast('Sync turned off on this device'));
+        if (confirm('Stop syncing on this device? Your notes stay here and in Google Drive.')) Sync.disconnect().then(() => toast('Sync turned off on this device'));
       }, 'danger');
       return;
     }
-    p.innerHTML = '<p>Keep notes the same on your PC and tablet. Notes are saved on each device first and work offline; when you are online they are copied to a private folder in your own Dropbox.</p>'
-      + '<p class="muted">One-time setup: create a free Dropbox app (see the guide in SYNC-SETUP.md), then paste its <b>App key</b> here. Add this address as a redirect URI in the app:</p>'
-      + '<code class="sync-uri"></code>';
+    p.innerHTML = '<p>Keep notes the same on your PC and tablet. Notes are saved on each device first and work offline; when you are online they are copied to a private app folder in your own Google Drive (it does not show up among your Drive files).</p>'
+      + '<p class="muted">One-time setup: create a free Google client ID (see the guide in SYNC-SETUP.md) and paste it here. Add these two addresses to it:</p>'
+      + '<p class="muted">Authorised JavaScript origin</p><code class="sync-o"></code><p class="muted">Authorised redirect URI</p><code class="sync-uri"></code>';
+    $('.sync-o', p).textContent = location.origin;
     $('.sync-uri', p).textContent = info.redirect;
     const inp = document.createElement('input');
-    inp.placeholder = 'Dropbox app key';
+    inp.placeholder = 'Google client ID';
     inp.value = info.key || '';
     inp.autocomplete = 'off';
     inp.spellcheck = false;
-    inp.setAttribute('aria-label', 'Dropbox app key');
+    inp.setAttribute('aria-label', 'Google client ID');
     p.append(inp);
     m.append(p);
     m.classList.add('wide');
-    mItem(m, 'Connect Dropbox', ICON.cloud, () => Sync.connect(inp.value).catch((e) => toast(e.message)));
+    mItem(m, 'Connect Google Drive', ICON.cloud, () => { try { Sync.connect(inp.value); } catch (e) { toast(e.message); } });
   }
 
   /* ---------------- start ---------------- */

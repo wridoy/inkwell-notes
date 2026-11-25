@@ -1,159 +1,191 @@
 'use strict';
 /* Inkwell sync: notes stay on the device and work offline. When online and connected,
-   they are copied to the user's own Dropbox (an "Apps/<app name>" folder) and changes
-   from other devices are brought back. Nothing here holds a secret: the Dropbox app key
-   is public by design (PKCE sign-in), and sign-in tokens are kept only on this device. */
+   they are copied to the user's own Google Drive (the app's private, hidden app-data
+   folder) and changes from other devices are brought back.
+   Nothing here holds a secret: the Google client ID is public by design, and the
+   sign-in token is kept only on this device. */
 window.InkwellSync = function InkwellSync(host) {
-  const API = 'https://api.dropboxapi.com/2/';
-  const CONTENT = 'https://content.dropboxapi.com/2/';
-  const AUTH_URL = 'https://www.dropbox.com/oauth2/authorize';
-  const TOKEN_URL = 'https://api.dropboxapi.com/oauth2/token';
-  // A built-in app key can be filled in here once one is registered; otherwise the user enters theirs.
-  const BUILT_IN_KEY = '';
+  const DRIVE = 'https://www.googleapis.com/drive/v3/';
+  const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
+  const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+  const SCOPE = 'https://www.googleapis.com/auth/drive.appdata email';
+  // A built-in client ID can be filled in here once one is registered; otherwise the user enters theirs.
+  const BUILT_IN_CLIENT_ID = '';
 
-  let auth = null; // { appKey, refresh, access, exp, account }
-  let st = { cursor: null, synced: {}, revs: {}, blobs: {}, foldersSynced: 0, last: 0 };
+  let auth = null; // { clientId, email, access, exp }
+  const fresh = () => ({ cursor: null, ids: {}, revs: {}, synced: {}, blobs: {}, foldersSynced: 0, last: 0 });
+  let st = fresh();
   let status = 'off', detail = '';
   let running = null, again = false, timer = 0, backoff = 0;
   const deferred = new Map(); // remote notes waiting until the user stops writing on them
 
   const redirectUri = () => location.origin + location.pathname;
-  const appKey = () => (auth && auth.appKey) || host.pref('dropboxKey', '') || BUILT_IN_KEY;
+  const clientId = () => (auth && auth.clientId) || host.pref('googleClientId', '') || BUILT_IN_CLIENT_ID;
   const setStatus = (s, d = '') => { status = s; detail = d; host.onStatus(s, d); };
   const saveState = () => host.metaPut({ key: 'sync-state', ...st }).catch(() => {});
   const saveAuth = () => (auth ? host.metaPut({ key: 'sync-auth', ...auth }) : host.metaDel('sync-auth')).catch(() => {});
+  const OFFLINE = 'Changes are saved on this device and will sync when you are back online.';
 
-  /* ---------- sign-in (OAuth 2 with PKCE, no secret) ---------- */
-  const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  /* ---------- sign-in (Google OAuth for browser apps, no secret) ---------- */
   function randomString(n) {
     const a = new Uint8Array(n);
     crypto.getRandomValues(a);
-    return b64url(a).slice(0, n);
+    return [...a].map((b) => (b % 36).toString(36)).join('');
   }
-  async function connect(key) {
-    key = (key || appKey() || '').trim();
-    if (!key) throw new Error('Enter your Dropbox app key first.');
+  function signIn(id, silent) {
+    id = (id || clientId() || '').trim();
+    if (!id) throw new Error('Enter your Google client ID first.');
     if (!navigator.onLine) throw new Error("You're offline. Connect to the internet to sign in.");
-    if (!crypto.subtle) throw new Error('Sign-in needs a secure (https) page.');
-    host.prefSet('dropboxKey', key);
-    const verifier = randomString(64);
+    host.prefSet('googleClientId', id);
     const state = randomString(24);
-    const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
-    sessionStorage.setItem('inkwell-oauth', JSON.stringify({ verifier, state, key }));
+    sessionStorage.setItem('inkwell-oauth', JSON.stringify({ state, id, silent: !!silent }));
     host.beforeLeave();
-    const q = new URLSearchParams({
-      client_id: key, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256',
-      redirect_uri: redirectUri(), token_access_type: 'offline', state,
-    });
+    const q = new URLSearchParams({ client_id: id, redirect_uri: redirectUri(), response_type: 'token', scope: SCOPE, include_granted_scopes: 'true', state });
+    if (silent) q.set('prompt', 'none');
+    if (auth && auth.email) q.set('login_hint', auth.email);
     location.assign(`${AUTH_URL}?${q}`);
   }
+  async function connect(id) { signIn(id, false); }
+  // Google gives browser apps an hour-long pass; renewing it is a quick trip to Google and back
+  function renew() {
+    if (!auth || !navigator.onLine) return false;
+    try {
+      const last = Number(sessionStorage.getItem('inkwell-renew') || 0);
+      if (Date.now() - last < 5 * 60000) return false; // don't loop if Google wants the user to sign in
+      sessionStorage.setItem('inkwell-renew', String(Date.now()));
+    } catch (e) { return false; }
+    signIn(auth.clientId, true);
+    return true;
+  }
   async function finishSignIn() {
-    const q = new URLSearchParams(location.search);
-    const code = q.get('code'), state = q.get('state'), err = q.get('error');
-    if (!code && !err) return false;
+    if (!location.hash || !/(access_token|error)=/.test(location.hash)) return false;
+    const q = new URLSearchParams(location.hash.slice(1));
     let saved = null;
     try { saved = JSON.parse(sessionStorage.getItem('inkwell-oauth') || 'null'); } catch (e) { saved = null; }
     sessionStorage.removeItem('inkwell-oauth');
-    history.replaceState(null, '', redirectUri() + location.hash);
-    if (err) { host.toast(err === 'access_denied' ? 'Dropbox sign-in was cancelled.' : 'Dropbox sign-in failed.'); return true; }
-    if (!saved || saved.state !== state) { host.toast('Dropbox sign-in could not be checked. Please try again.'); return true; }
-    const body = new URLSearchParams({ code, grant_type: 'authorization_code', code_verifier: saved.verifier, client_id: saved.key, redirect_uri: redirectUri() });
-    const r = await fetch(TOKEN_URL, { method: 'POST', body });
-    if (!r.ok) { host.toast('Dropbox sign-in failed. Check the app key and the redirect address.'); return true; }
-    const t = await r.json();
-    auth = { appKey: saved.key, refresh: t.refresh_token, access: t.access_token, exp: Date.now() + (t.expires_in || 14400) * 1000 };
-    st = { cursor: null, synced: {}, revs: {}, blobs: {}, foldersSynced: 0, last: 0 };
+    history.replaceState(null, '', redirectUri());
+    const err = q.get('error');
+    if (err) {
+      if (saved && saved.silent) { setStatus('auth', 'Tap to sign in to Google again.'); return true; }
+      host.toast(err === 'access_denied' ? 'Google sign-in was cancelled.' : 'Google sign-in failed.');
+      return true;
+    }
+    if (!saved || saved.state !== q.get('state')) { host.toast('Google sign-in could not be checked. Please try again.'); return true; }
+    if (!(q.get('scope') || '').includes('drive.appdata')) { host.toast('Inkwell needs permission to use its own Google Drive folder. Please allow it.'); return true; }
+    const isNew = !auth || auth.clientId !== saved.id;
+    auth = Object.assign(auth || {}, { clientId: saved.id, access: q.get('access_token'), exp: Date.now() + (Number(q.get('expires_in')) || 3600) * 1000 });
+    if (isNew) st = fresh();
     try {
-      const acc = await rpc('users/get_current_account', null);
-      auth.account = acc.name ? acc.name.display_name : '';
-    } catch (e) { /* the name is only shown in the menu */ }
+      const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + auth.access } });
+      if (r.ok) auth.email = (await r.json()).email || auth.email || '';
+    } catch (e) { /* only shown in the menu */ }
     await saveAuth();
     await saveState();
-    host.toast('Dropbox connected. Your notes will now sync.');
+    if (!saved.silent) host.toast('Google Drive connected. Your notes will now sync.');
     return true;
   }
-  async function token() {
+  function token() {
     if (!auth) throw Object.assign(new Error('Not connected'), { code: 'auth' });
     if (auth.access && auth.exp > Date.now() + 60000) return auth.access;
-    const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: auth.refresh, client_id: auth.appKey });
-    const r = await fetch(TOKEN_URL, { method: 'POST', body });
-    if (r.status === 400 || r.status === 401) throw Object.assign(new Error('Sign-in expired'), { code: 'auth' });
-    if (!r.ok) throw new Error('Dropbox is not answering');
-    const t = await r.json();
-    auth.access = t.access_token;
-    auth.exp = Date.now() + (t.expires_in || 14400) * 1000;
-    saveAuth();
-    return auth.access;
+    throw Object.assign(new Error('Sign-in expired'), { code: 'auth' });
   }
   async function disconnect() {
-    if (auth) {
-      try { const tk = await token(); await fetch(API + 'auth/token/revoke', { method: 'POST', headers: { Authorization: 'Bearer ' + tk } }); } catch (e) { /* offline: forget anyway */ }
+    if (auth && auth.access) {
+      try { await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(auth.access), { method: 'POST' }); } catch (e) { /* offline: forget anyway */ }
     }
     auth = null;
-    st = { cursor: null, synced: {}, revs: {}, blobs: {}, foldersSynced: 0, last: 0 };
+    st = fresh();
     await saveAuth();
     await host.metaDel('sync-state').catch(() => {});
     setStatus('off');
   }
 
-  /* ---------- Dropbox calls ---------- */
-  // Dropbox-API-Arg must be plain ASCII
-  const argHeader = (o) => JSON.stringify(o).replace(/[\u007f-￿]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
-  async function call(url, opts, retry = 0) {
-    const tk = await token();
-    opts.headers = Object.assign({ Authorization: 'Bearer ' + tk }, opts.headers || {});
+  /* ---------- Google Drive calls ---------- */
+  async function call(url, opts = {}, retry = 0) {
+    opts.headers = Object.assign({ Authorization: 'Bearer ' + token() }, opts.headers || {});
     const r = await fetch(url, opts);
-    if (r.status === 401 && retry < 1) { auth.exp = 0; return call(url, opts, retry + 1); }
-    if (r.status === 429 || r.status >= 500) {
+    if (r.status === 401) { auth.exp = 0; throw Object.assign(new Error('Sign-in expired'), { code: 'auth' }); }
+    if (r.status === 429 || r.status >= 500 || (r.status === 403 && /rateLimit/i.test(await r.clone().text()))) {
       if (retry < 3) {
-        const wait = Number(r.headers.get('Retry-After')) || 2 ** retry;
-        await new Promise((res) => setTimeout(res, wait * 1000));
+        await new Promise((res) => setTimeout(res, 1000 * 2 ** retry));
         return call(url, opts, retry + 1);
       }
-      throw new Error('Dropbox is busy. Will try again soon.');
+      throw new Error('Google Drive is busy. Will try again soon.');
     }
     return r;
   }
-  async function rpc(path, args) {
-    const r = await call(API + path, args == null ? { method: 'POST' } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-    const text = await r.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch (e) { data = { error_summary: text }; }
-    if (!r.ok) throw Object.assign(new Error((data && data.error_summary) || 'Dropbox error'), { status: r.status, data });
+  async function json(url, opts) {
+    const r = await call(url, opts);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error((data.error && data.error.message) || 'Google Drive error'), { status: r.status });
     return data;
   }
-  async function upload(path, body, mode = 'overwrite') {
-    const r = await call(CONTENT + 'files/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/octet-stream', 'Dropbox-API-Arg': argHeader({ path, mode, mute: true, autorename: false }) },
-      body,
-    });
-    const text = await r.text();
-    if (r.status === 409 && mode === 'add' && /conflict/.test(text)) return { exists: true };
-    if (!r.ok) throw Object.assign(new Error('Upload failed: ' + text.slice(0, 120)), { status: r.status });
-    return JSON.parse(text);
+  const FIELDS = 'id,name,version';
+  function remember(f) {
+    if (!f || !f.name) return;
+    st.ids[f.name] = f.id;
+    st.revs[f.name] = String(f.version);
   }
-  async function download(path) {
-    const r = await call(CONTENT + 'files/download', { method: 'POST', headers: { 'Dropbox-API-Arg': argHeader({ path }) } });
-    if (r.status === 409) return null; // not found
+  async function upload(name, blob) {
+    const id = st.ids[name];
+    if (id) {
+      const r = await call(`${UPLOAD}/${id}?uploadType=media&fields=${FIELDS}`, { method: 'PATCH', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob });
+      if (r.ok) { const f = await r.json(); remember(f); return f; }
+      if (r.status !== 404) throw new Error('Upload failed');
+      delete st.ids[name];
+    }
+    const boundary = 'inkwell' + randomString(16);
+    const meta = JSON.stringify({ name, parents: ['appDataFolder'] });
+    const body = new Blob([
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n`,
+      `--${boundary}\r\nContent-Type: ${blob.type || 'application/octet-stream'}\r\n\r\n`, blob,
+      `\r\n--${boundary}--`,
+    ]);
+    const f = await json(`${UPLOAD}?uploadType=multipart&fields=${FIELDS}`, { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body });
+    remember(f);
+    return f;
+  }
+  async function download(id) {
+    const r = await call(`${DRIVE}files/${id}?alt=media`);
+    if (r.status === 404) return null;
     if (!r.ok) throw new Error('Download failed');
     return r.blob();
   }
+  // files that changed since the last pass: [{ name, id, version }]
   async function listChanges() {
     const out = [];
-    let res;
-    if (st.cursor) {
-      try { res = await rpc('files/list_folder/continue', { cursor: st.cursor }); }
-      catch (e) { if (e.status === 409) { st.cursor = null; return listChanges(); } throw e; }
-    } else {
-      res = await rpc('files/list_folder', { path: '', recursive: true, include_deleted: false });
+    if (!st.cursor) {
+      const start = await json(`${DRIVE}changes/startPageToken`);
+      let page = '';
+      do {
+        const q = new URLSearchParams({ spaces: 'appDataFolder', pageSize: '1000', fields: `nextPageToken,files(${FIELDS})` });
+        if (page) q.set('pageToken', page);
+        const res = await json(`${DRIVE}files?${q}`);
+        out.push(...res.files);
+        page = res.nextPageToken;
+      } while (page);
+      st.ids = {};
+      out.forEach((f) => { st.ids[f.name] = f.id; });
+      return { files: out, cursor: start.startPageToken };
     }
-    out.push(...res.entries);
-    while (res.has_more) {
-      res = await rpc('files/list_folder/continue', { cursor: res.cursor });
-      out.push(...res.entries);
+    let page = st.cursor, next = null;
+    while (page) {
+      const q = new URLSearchParams({ pageToken: page, spaces: 'appDataFolder', pageSize: '1000', includeRemoved: 'true', fields: `nextPageToken,newStartPageToken,changes(fileId,removed,file(${FIELDS},trashed))` });
+      let res;
+      try { res = await json(`${DRIVE}changes?${q}`); }
+      catch (e) { if (e.status === 404 || e.status === 400) { st.cursor = null; return listChanges(); } throw e; }
+      for (const c of res.changes) {
+        if (c.removed || !c.file || c.file.trashed) {
+          for (const [n, id] of Object.entries(st.ids)) if (id === c.fileId) delete st.ids[n];
+          continue;
+        }
+        st.ids[c.file.name] = c.file.id;
+        out.push(c.file);
+      }
+      page = res.nextPageToken;
+      next = res.newStartPageToken || next;
     }
-    return { entries: out, cursor: res.cursor };
+    return { files: out, cursor: next || st.cursor };
   }
   async function pool(items, n, fn) {
     let i = 0;
@@ -164,38 +196,39 @@ window.InkwellSync = function InkwellSync(host) {
   /* ---------- one sync pass ---------- */
   async function pass() {
     // 1. bring in changes from other devices
-    const { entries, cursor } = await listChanges();
-    const noteFiles = entries.filter((e) => e['.tag'] === 'file' && /^\/notes\/[^/]+\.json$/.test(e.path_lower) && st.revs[e.path_lower] !== e.rev);
-    const folderFile = entries.find((e) => e['.tag'] === 'file' && e.path_lower === '/meta/folders.json' && st.revs[e.path_lower] !== e.rev);
+    const { files, cursor } = await listChanges();
+    const isNew = (f) => st.revs[f.name] !== String(f.version);
+    const noteFiles = files.filter((f) => /^note-.+\.json$/.test(f.name) && isNew(f));
+    const folderFile = files.find((f) => f.name === 'folders.json' && isNew(f));
     let changed = 0;
-    await pool(noteFiles, 4, async (e) => {
-      const b = await download(e.path_lower);
+    await pool(noteFiles, 4, async (f) => {
+      const b = await download(f.id);
       if (!b) return;
       let n;
       try { n = JSON.parse(await b.text()); } catch (err) { return; }
-      st.revs[e.path_lower] = e.rev;
+      st.revs[f.name] = String(f.version);
       if (!host.validNote(n)) return;
       if (applyRemote(n)) changed++;
     });
     if (folderFile) {
-      const b = await download(folderFile.path_lower);
+      const b = await download(folderFile.id);
       if (b) {
         try {
           const f = JSON.parse(await b.text());
-          st.revs[folderFile.path_lower] = folderFile.rev;
+          st.revs[folderFile.name] = String(folderFile.version);
           if (Array.isArray(f.list) && f.updated > host.foldersUpdated()) { host.setFolders(f.list, f.updated); st.foldersSynced = f.updated; changed++; }
         } catch (err) { /* ignore a damaged file */ }
       }
     }
     st.cursor = cursor;
     // pictures and recordings that other devices added
-    const missing = new Set();
+    const missing = [];
     for (const n of host.notes()) {
       if (n.deleted) continue;
-      for (const id of host.blobIdsOf(n)) if (!(await host.hasBlob(id))) missing.add(id);
+      for (const id of host.blobIdsOf(n)) if (st.ids['blob-' + id] && !(await host.hasBlob(id))) missing.push(id);
     }
-    await pool([...missing], 3, async (id) => {
-      const b = await download('/blobs/' + id);
+    await pool([...new Set(missing)], 3, async (id) => {
+      const b = await download(st.ids['blob-' + id]);
       if (b) { await host.putBlob(id, b); st.blobs[id] = 1; changed++; }
     });
     if (changed) host.refresh();
@@ -205,22 +238,20 @@ window.InkwellSync = function InkwellSync(host) {
     for (const n of dirty) {
       if (!n.deleted) {
         for (const id of host.blobIdsOf(n)) {
-          if (st.blobs[id]) continue;
+          if (st.blobs[id] || st.ids['blob-' + id]) { st.blobs[id] = 1; continue; }
           const b = await host.getBlob(id);
           if (!b) continue;
-          await upload('/blobs/' + id, b, 'add');
+          await upload('blob-' + id, b);
           st.blobs[id] = 1;
         }
       }
       const snap = host.serialize(n);
-      const res = await upload(`/notes/${n.id}.json`, new Blob([JSON.stringify(snap)], { type: 'application/json' }));
-      if (res && res.rev) st.revs[res.path_lower] = res.rev;
+      await upload(`note-${n.id}.json`, new Blob([JSON.stringify(snap)], { type: 'application/json' }));
       st.synced[n.id] = snap.updated;
     }
     const fu = host.foldersUpdated();
     if (fu > st.foldersSynced) {
-      const res = await upload('/meta/folders.json', new Blob([JSON.stringify({ list: host.folders(), updated: fu })], { type: 'application/json' }));
-      if (res && res.rev) st.revs[res.path_lower] = res.rev;
+      await upload('folders.json', new Blob([JSON.stringify({ list: host.folders(), updated: fu })], { type: 'application/json' }));
       st.foldersSynced = fu;
     }
     st.last = Date.now();
@@ -252,7 +283,7 @@ window.InkwellSync = function InkwellSync(host) {
 
   async function syncNow(manual) {
     if (!auth) { setStatus('off'); return; }
-    if (!navigator.onLine) { setStatus('offline', 'Changes are saved on this device and will sync when you are back online.'); return; }
+    if (!navigator.onLine) { setStatus('offline', OFFLINE); return; }
     if (running) { again = true; return running; }
     setStatus('syncing');
     running = (async () => {
@@ -264,8 +295,8 @@ window.InkwellSync = function InkwellSync(host) {
         setStatus('ok', '');
         if (manual) host.toast(r.pulled || r.pushed ? `Synced: ${r.pushed} sent, ${r.pulled} received` : 'Everything is up to date');
       } catch (e) {
-        if (e.code === 'auth') setStatus('auth', 'Dropbox needs you to sign in again.');
-        else if (!navigator.onLine) setStatus('offline', 'Changes are saved on this device and will sync when you are back online.');
+        if (e.code === 'auth') setStatus('auth', 'Tap to sign in to Google again. Your changes are safe on this device.');
+        else if (!navigator.onLine) setStatus('offline', OFFLINE);
         else { setStatus('error', e.message || 'Sync failed'); backoff = Math.min(300000, (backoff || 15000) * 2); schedule(backoff); }
         if (manual && e.code !== 'auth') host.toast('Sync failed: ' + (e.message || 'unknown error'));
       } finally {
@@ -283,26 +314,28 @@ window.InkwellSync = function InkwellSync(host) {
   async function start() {
     try {
       const a = await host.metaGet('sync-auth');
-      if (a && a.refresh) auth = { appKey: a.appKey, refresh: a.refresh, access: a.access, exp: a.exp, account: a.account };
+      if (a && a.clientId) auth = { clientId: a.clientId, email: a.email, access: a.access, exp: a.exp };
       const s = await host.metaGet('sync-state');
-      if (s) st = Object.assign(st, s, { key: undefined });
-      delete st.key;
+      if (s) { st = Object.assign(fresh(), s); delete st.key; }
     } catch (e) { /* storage unavailable: sync stays off */ }
-    try { await finishSignIn(); } catch (e) { host.toast('Dropbox sign-in failed: ' + e.message); }
+    try { await finishSignIn(); } catch (e) { host.toast('Google sign-in failed: ' + e.message); }
     if (!auth) { setStatus('off'); return; }
-    setStatus(navigator.onLine ? 'ok' : 'offline');
+    // the hour-long pass ran out while the app was closed: renew it now (quick trip to Google)
+    if (navigator.onLine && !(auth.access && auth.exp > Date.now() + 60000) && renew()) return;
     window.addEventListener('online', () => syncNow(false));
-    window.addEventListener('offline', () => setStatus('offline', 'Changes are saved on this device and will sync when you are back online.'));
+    window.addEventListener('offline', () => setStatus('offline', OFFLINE));
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') schedule(500); });
     setInterval(() => { if (document.visibilityState === 'visible') syncNow(false); }, 60000);
+    if (status !== 'auth') setStatus(navigator.onLine ? 'ok' : 'offline', navigator.onLine ? '' : OFFLINE);
     schedule(800);
   }
 
   return {
     start, connect, disconnect,
+    // resume after the pass ran out: sends everything first, then a quick trip to Google
+    resume: () => { try { sessionStorage.removeItem('inkwell-renew'); } catch (e) { /* ignore */ } signIn(clientId(), true); },
     syncNow: () => syncNow(true),
     noteChanged: () => { if (auth && status !== 'auth') schedule(5000); },
-    idle: () => { if (deferred.size) applyDeferred(); },
-    info: () => ({ connected: !!auth, status, detail, last: st.last, account: auth && auth.account, key: appKey(), redirect: redirectUri() }),
+    info: () => ({ connected: !!auth, status, detail, last: st.last, account: auth && auth.email, key: clientId(), redirect: redirectUri() }),
   };
 };

@@ -204,15 +204,8 @@ window.MathInk = (() => {
       const [p, q] = g.strokes.map((s) => box([s]));
       if (flat(p) && flat(q) && Math.abs(p.cy - q.cy) > Math.max(3, ref * 0.12)) return { sym: '=' };
     }
-    // a small closed loop written high up is a degree sign
-    if (n === 1 && b.h < baseH * 0.55 && b.y2 < g.mid) {
-      const s0 = g.strokes[0], a = s0[0], z = s0[s0.length - 1];
-      if (Math.hypot(a[0] - z[0], a[1] - z[1]) < Math.max(b.w, b.h) * 0.4) return { sym: '°' };
-    }
     const r = classify(g.strokes);
     let sym = r.sym;
-    // a small circle written high up is a degree sign
-    if ((sym === '0' || sym === 'o') && b.h < baseH * 0.55 && b.y2 < g.mid) sym = '°';
     if (sym === 'x' && b.h < baseH * 0.4) sym = '*';
     return { sym, score: r.score };
   }
@@ -272,7 +265,7 @@ window.MathInk = (() => {
       g.mid = mid;
       const t = symbolOf(g, ref, mainH);
       // a power: smaller, and sitting above the middle of the thing before it
-      if (prevBase && !t.dot && !'°=+-*'.includes(t.sym) && g.b.h < prevBase.h * 0.8 && g.b.y2 < prevBase.y1 + prevBase.h * 0.55) t.sup = true;
+      if (prevBase && !t.dot && !'=+-*'.includes(t.sym) && g.b.h < prevBase.h * 0.8 && g.b.y2 < prevBase.y1 + prevBase.h * 0.55) t.sup = true;
       toks.push(t);
       if (!t.sup) prevBase = g.b;
     }
@@ -363,7 +356,7 @@ window.MathInk = (() => {
           const op = str[i];
           const [a, i2] = group(str, i + 1);
           const c = conv(a);
-          if (op === '^') out += c === '\\circ' || c === '°' ? '°' : c.length === 1 ? `^${c}` : `^(${c})`;
+          if (op === '^') out += c.length === 1 ? `^${c}` : `^(${c})`;
           else out += c; // subscripts become part of the name
           i = i2; continue;
         }
@@ -373,11 +366,11 @@ window.MathInk = (() => {
       return out;
     };
     s = s.replace(/\\left|\\right|\\,|\\;|\\!|\\quad/g, ' ')
-      .replace(/\\(times|cdot)/g, '*').replace(/\\div/g, '/').replace(/\\pi/g, 'pi').replace(/\\circ/g, '°').replace(/\\degree/g, '°')
+      .replace(/\\(times|cdot)/g, '*').replace(/\\div/g, '/').replace(/\\pi/g, 'pi')
       .replace(/\\(sin|cos|tan|log|ln|exp|arcsin|arccos|arctan)/g, (m, f) => ' ' + ({ arcsin: 'asin', arccos: 'acos', arctan: 'atan' }[f] || f))
       .replace(/\\(mathrm|text|operatorname)\{([^}]*)\}/g, '$2')
       .replace(/\\begin\{[^}]*\}|\\end\{[^}]*\}|&/g, '');
-    return conv(s).split('\n').map((l) => l.replace(/\^\{?\\?°\}?/g, '°').replace(/\s+/g, ' ').trim()).filter(Boolean);
+    return conv(s).split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
   }
 
   return { recognize, recognizeOnline, latexToPlain, learn, loadLearned, symbols: () => [...new Set(T.map((t) => t[0]))] };
