@@ -107,6 +107,9 @@
     indent: 'M11 6h9 M11 10h9 M11 14h9 M4 18h16 M4 8.5l3.5 2.5L4 13.5',
     outdent: 'M11 6h9 M11 10h9 M11 14h9 M4 18h16 M7.5 8.5L4 11l3.5 2.5',
     chevDown: 'M6 9l6 6 6-6',
+    lock: 'M6 11h12v9H6z M8.5 11V8a3.5 3.5 0 0 1 7 0v3',
+    unlock: 'M6 11h12v9H6z M8.5 11V8a3.5 3.5 0 0 1 6.8-1.2',
+    sliders: 'M4 7h9 M17 7h3 M15 5v4 M4 12h3 M11 12h9 M9 10v4 M4 17h11 M19 17h1 M17 15v4',
     tape: 'M3 10a5 5 0 1 0 10 0a5 5 0 1 0 -10 0 M8 10h.01 M10.5 14.3L20 18v-5l-7-2.5',
     restyle: 'M5 20l6-16h2l6 16 M8.2 14h7.6',
     zoomLock: 'M9.5 3a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13 M14.2 14.2l2.3 2.3 M15 17.5h6v4.5h-6z M16.5 17.5V16a1.5 1.5 0 0 1 3 0v1.5',
@@ -2065,11 +2068,16 @@
       + `<button class="mbtn" data-a="out" title="Zoom graph out" aria-label="Zoom graph out">${svg(ICON.minus)}</button>`
       + `<button class="mbtn" data-a="in" title="Zoom graph in" aria-label="Zoom graph in">${svg(ICON.plus)}</button>`
       + `<button class="mbtn" data-a="home" title="Reset graph view" aria-label="Reset graph view">${svg(ICON.home)}</button>`
+      + `<button class="mbtn" data-a="lock" title="Lock graph view" aria-label="Lock graph view" aria-pressed="false">${svg(ICON.unlock)}</button>`
+      + `<button class="mbtn" data-a="set" title="Graph settings" aria-label="Graph settings" aria-expanded="false">${svg(ICON.sliders)}</button>`
       + `<button class="mbtn" data-a="del" title="Delete math card" aria-label="Delete math card">${svg(ICON.close)}</button></div>`
-      + `<div class="mrows"></div><div class="mgraph" style="height:${c.gh}px"><canvas></canvas><div class="mcoord"></div></div>`
+      + `<div class="mrows"></div><div class="mset" hidden></div><div class="mgraph" style="height:${c.gh}px"><canvas></canvas><div class="mcoord"></div></div>`
       + `<div class="mresize" title="Resize">${svg(ICON.resize)}</div>`;
     el.layer.append(root);
-    const ce = { card: c, root, rows: $('.mrows', root), gcv: $('.mgraph canvas', root), coord: $('.mcoord', root), graphBox: $('.mgraph', root), plots: [] };
+    const ce = { card: c, root, rows: $('.mrows', root), gcv: $('.mgraph canvas', root), coord: $('.mcoord', root), graphBox: $('.mgraph', root), set: $('.mset', root), plots: [] };
+    gopts(c);
+    buildGraphSettings(ce);
+    updateLockBtn(ce);
     cardEls.set(c.id, ce);
     buildRows(ce);
     wireCard(ce);
@@ -2139,6 +2147,21 @@
         renderCards();
         return;
       }
+      if (a === 'lock') {
+        card.opts.lock = !card.opts.lock;
+        updateLockBtn(ce);
+        touchNote();
+        toast(card.opts.lock ? 'Graph locked: it will not pan or zoom.' : 'Graph unlocked', 1600);
+        return;
+      }
+      if (a === 'set') {
+        ce.set.hidden = !ce.set.hidden;
+        b.setAttribute('aria-expanded', String(!ce.set.hidden));
+        b.classList.toggle('on', !ce.set.hidden);
+        if (!ce.set.hidden) syncGraphSettings(ce);
+        return;
+      }
+      if ((a === 'in' || a === 'out' || a === 'home') && card.opts.lock) { toast('This graph is locked. Tap the lock on the card to unlock it.'); return; }
       if (a === 'in') zoomGraph(ce, 1.5);
       if (a === 'out') zoomGraph(ce, 1 / 1.5);
       if (a === 'home') { card.view = { cx: 0, cy: 0, s: 30 }; drawGraph(ce); touchNote(); }
@@ -2261,8 +2284,25 @@
     const dec = Math.max(0, -Math.floor(Math.log10(step)));
     return String(Number(v.toFixed(Math.min(dec, 10))));
   }
+  const GRAPH_DEF = { grid: true, minor: true, numbers: true, arrows: true, arrowBoth: false, xAxis: true, yAxis: true, xLabel: '', yLabel: '', xStep: 0, yStep: 0, lock: false };
+  const gopts = (c) => (c.opts = Object.assign({}, GRAPH_DEF, c.opts || {}));
+  // the x and y axes can have different scales (pixels per unit)
+  const scales = (v) => ({ sx: v.s, sy: v.sy || v.s });
+  function graphRange(ce) {
+    const c = ce.card, v = c.view, W = ce.gcv.clientWidth || c.w, H = c.gh, { sx, sy } = scales(v);
+    return { xmin: v.cx - W / 2 / sx, xmax: v.cx + W / 2 / sx, ymin: v.cy - H / 2 / sy, ymax: v.cy + H / 2 / sy, W, H };
+  }
+  function drawArrow(g, x, y, ang) {
+    const L = 9;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x - L * Math.cos(ang - 0.45), y - L * Math.sin(ang - 0.45));
+    g.moveTo(x, y);
+    g.lineTo(x - L * Math.cos(ang + 0.45), y - L * Math.sin(ang + 0.45));
+    g.stroke();
+  }
   function drawGraph(ce) {
-    const c = ce.card, cv = ce.gcv;
+    const c = ce.card, cv = ce.gcv, o = gopts(c);
     const W = cv.clientWidth || c.w, H = c.gh;
     if (!W || !H) return;
     const k = Math.min(4, (window.devicePixelRatio || 1) * S.zoom);
@@ -2273,37 +2313,56 @@
     g.setTransform(k, 0, 0, k, 0, 0);
     g.fillStyle = '#fff';
     g.fillRect(0, 0, W, H);
-    const v = c.view, s = v.s;
-    const X = (wx) => W / 2 + (wx - v.cx) * s, Y = (wy) => H / 2 - (wy - v.cy) * s;
-    const xmin = v.cx - W / 2 / s, xmax = v.cx + W / 2 / s, ymin = v.cy - H / 2 / s, ymax = v.cy + H / 2 / s;
-    const step = niceStep(70 / s);
-    const grid = (st, color) => {
-      if ((xmax - xmin) / st > 400 || (ymax - ymin) / st > 400) return;
+    const v = c.view, { sx, sy } = scales(v);
+    const X = (wx) => W / 2 + (wx - v.cx) * sx, Y = (wy) => H / 2 - (wy - v.cy) * sy;
+    const { xmin, xmax, ymin, ymax } = graphRange(ce);
+    const stepX = o.xStep > 0 ? o.xStep : niceStep(70 / sx);
+    const stepY = o.yStep > 0 ? o.yStep : niceStep(70 / sy);
+    const gridLines = (stX, stY, color) => {
       g.strokeStyle = color;
       g.lineWidth = 1;
       g.beginPath();
-      for (let x = Math.ceil(xmin / st) * st; x <= xmax; x += st) { const px = Math.round(X(x)) + 0.5; g.moveTo(px, 0); g.lineTo(px, H); }
-      for (let y = Math.ceil(ymin / st) * st; y <= ymax; y += st) { const py = Math.round(Y(y)) + 0.5; g.moveTo(0, py); g.lineTo(W, py); }
+      if ((xmax - xmin) / stX <= 400) for (let x = Math.ceil(xmin / stX) * stX; x <= xmax; x += stX) { const px = Math.round(X(x)) + 0.5; g.moveTo(px, 0); g.lineTo(px, H); }
+      if ((ymax - ymin) / stY <= 400) for (let y = Math.ceil(ymin / stY) * stY; y <= ymax; y += stY) { const py = Math.round(Y(y)) + 0.5; g.moveTo(0, py); g.lineTo(W, py); }
       g.stroke();
     };
-    grid(step / 5, '#f1f4f8');
-    grid(step, '#dde3ea');
-    g.strokeStyle = '#7d8a9b';
-    g.lineWidth = 1.25;
-    g.beginPath();
-    if (ymin <= 0 && ymax >= 0) { g.moveTo(0, Y(0)); g.lineTo(W, Y(0)); }
-    if (xmin <= 0 && xmax >= 0) { g.moveTo(X(0), 0); g.lineTo(X(0), H); }
-    g.stroke();
+    if (o.grid) {
+      if (o.minor) gridLines(stepX / 5, stepY / 5, '#f1f4f8');
+      gridLines(stepX, stepY, '#dde3ea');
+    }
+    const x0 = X(0), y0 = Y(0);
+    const showX = o.xAxis && ymin <= 0 && ymax >= 0, showY = o.yAxis && xmin <= 0 && xmax >= 0;
+    g.strokeStyle = '#5d6b7d';
     g.fillStyle = '#5d6b7d';
+    g.lineWidth = 1.4;
+    g.lineCap = 'round';
+    g.beginPath();
+    if (showX) { g.moveTo(0, y0); g.lineTo(W, y0); }
+    if (showY) { g.moveTo(x0, 0); g.lineTo(x0, H); }
+    g.stroke();
+    if (o.arrows) {
+      if (showX) { drawArrow(g, W - 1.5, y0, 0); if (o.arrowBoth) drawArrow(g, 1.5, y0, Math.PI); }
+      if (showY) { drawArrow(g, x0, 1.5, -Math.PI / 2); if (o.arrowBoth) drawArrow(g, x0, H - 1.5, Math.PI / 2); }
+    }
     g.font = `11px ${FONT}`;
-    g.textAlign = 'center';
-    g.textBaseline = 'top';
-    const ly = clamp(Y(0) + 4, 2, H - 14);
-    for (let x = Math.ceil(xmin / step) * step; x <= xmax; x += step) if (Math.abs(x) > step / 2) g.fillText(fmtTick(x, step), X(x), ly);
-    g.textAlign = 'right';
-    g.textBaseline = 'middle';
-    const lx = clamp(X(0) - 5, 30, W - 4);
-    for (let y = Math.ceil(ymin / step) * step; y <= ymax; y += step) if (Math.abs(y) > step / 2) g.fillText(fmtTick(y, step), lx, Y(y));
+    if (o.numbers) {
+      if (o.xAxis) {
+        g.textAlign = 'center';
+        g.textBaseline = 'top';
+        const ly = clamp(y0 + 4, 2, H - 14);
+        for (let x = Math.ceil(xmin / stepX) * stepX; x <= xmax; x += stepX) if (Math.abs(x) > stepX / 2) g.fillText(fmtTick(x, stepX), X(x), ly);
+      }
+      if (o.yAxis) {
+        g.textAlign = 'right';
+        g.textBaseline = 'middle';
+        const lx = clamp(x0 - 5, 30, W - 4);
+        for (let y = Math.ceil(ymin / stepY) * stepY; y <= ymax; y += stepY) if (Math.abs(y) > stepY / 2) g.fillText(fmtTick(y, stepY), lx, Y(y));
+      }
+    }
+    g.fillStyle = '#1c2430';
+    g.font = 'italic 14px "Cambria Math", Cambria, serif';
+    if (o.xAxis && o.xLabel) { g.textAlign = 'right'; g.textBaseline = 'bottom'; g.fillText(o.xLabel, W - 8, clamp(y0 - 6, 18, H - 4)); }
+    if (o.yAxis && o.yLabel) { g.textAlign = 'left'; g.textBaseline = 'top'; g.fillText(o.yLabel, clamp(x0 + 10, 4, W - 60), 4); }
     for (const pl of ce.plots) {
       g.strokeStyle = pl.color;
       g.lineWidth = 2.25;
@@ -2318,7 +2377,7 @@
       let pen = false, prevY = 0;
       const N = Math.ceil(W * 2);
       for (let i = 0; i <= N; i++) {
-        const px = i / 2, wx = xmin + px / s;
+        const px = i / 2, wx = xmin + px / sx;
         let wy;
         try { wy = pl.fn(wx); } catch (_) { wy = NaN; }
         if (typeof wy !== 'number' || !Number.isFinite(wy)) { pen = false; continue; }
@@ -2330,6 +2389,7 @@
       }
       g.stroke();
     }
+    if (ce.set && !ce.set.hidden) syncGraphSettings(ce, true);
   }
   function graphLocal(ce, clientX, clientY) {
     const r = ce.gcv.getBoundingClientRect();
@@ -2338,27 +2398,43 @@
   }
   function zoomGraphAt(ce, f, clientX, clientY) {
     const v = ce.card.view;
+    const { sx, sy } = scales(v);
     const { lx, ly, W, H } = graphLocal(ce, clientX, clientY);
-    const wx = v.cx + (lx - W / 2) / v.s, wy = v.cy - (ly - H / 2) / v.s;
-    const s = clamp(v.s * f, 0.02, 50000);
-    v.cx = wx - (lx - W / 2) / s;
-    v.cy = wy + (ly - H / 2) / s;
-    v.s = s;
+    const wx = v.cx + (lx - W / 2) / sx, wy = v.cy - (ly - H / 2) / sy;
+    const nsx = clamp(sx * f, 0.02, 50000), nsy = clamp(sy * f, 0.02, 50000);
+    v.cx = wx - (lx - W / 2) / nsx;
+    v.cy = wy + (ly - H / 2) / nsy;
+    v.s = nsx;
+    if (v.sy) v.sy = nsy;
     drawGraph(ce);
   }
   function zoomGraph(ce, f) {
     const v = ce.card.view;
     v.s = clamp(v.s * f, 0.02, 50000);
+    if (v.sy) v.sy = clamp(v.sy * f, 0.02, 50000);
     drawGraph(ce);
     touchNote();
+  }
+  function updateLockBtn(ce) {
+    const b = ce.root.querySelector('.mbtn[data-a="lock"]');
+    if (!b) return;
+    const on = !!ce.card.opts.lock;
+    b.innerHTML = svg(on ? ICON.lock : ICON.unlock);
+    b.classList.toggle('on', on);
+    b.title = on ? 'Unlock graph view' : 'Lock graph view';
+    b.setAttribute('aria-label', b.title);
+    b.setAttribute('aria-pressed', String(on));
+    ce.gcv.style.cursor = on ? 'default' : '';
   }
   function wireGraph(ce) {
     const g = ce.gcv;
     const ptrs = new Map();
     let last = null, lastD = 0, before = null;
+    const locked = () => !!ce.card.opts.lock;
     g.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (locked()) return;
       capture(g, e);
       ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (!before) before = JSON.stringify(ce.card.view);
@@ -2368,16 +2444,17 @@
     });
     g.addEventListener('pointermove', (e) => {
       const v = ce.card.view;
+      const { sx, sy } = scales(v);
       if (!ptrs.has(e.pointerId)) {
         const { lx, ly, W, H } = graphLocal(ce, e.clientX, e.clientY);
-        ce.coord.textContent = `x ${fmtNum(Number((v.cx + (lx - W / 2) / v.s).toPrecision(3)))},  y ${fmtNum(Number((v.cy - (ly - H / 2) / v.s).toPrecision(3)))}`;
+        ce.coord.textContent = `x ${fmtNum(Number((v.cx + (lx - W / 2) / sx).toPrecision(3)))},  y ${fmtNum(Number((v.cy - (ly - H / 2) / sy).toPrecision(3)))}`;
         return;
       }
       ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
       const pts = [...ptrs.values()];
       const c = center(pts);
-      v.cx -= (c.x - last.x) / S.zoom / v.s;
-      v.cy += (c.y - last.y) / S.zoom / v.s;
+      v.cx -= (c.x - last.x) / S.zoom / sx;
+      v.cy += (c.y - last.y) / S.zoom / sy;
       if (pts.length === 2) {
         const d = dist(pts[0], pts[1]);
         if (lastD > 0 && d > 0) zoomGraphAt(ce, d / lastD, c.x, c.y);
@@ -2396,12 +2473,94 @@
     g.addEventListener('pointercancel', end);
     g.addEventListener('pointerleave', () => { if (!ptrs.size) ce.coord.textContent = ''; });
     g.addEventListener('wheel', (e) => {
+      if (locked()) return; // let the page scroll instead
       e.preventDefault();
       e.stopPropagation();
       zoomGraphAt(ce, Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
       clearTimeout(ce.wheelT);
       ce.wheelT = setTimeout(touchNote, 400);
     }, { passive: false });
+  }
+
+  /* graph settings panel inside each math card */
+  function buildGraphSettings(ce) {
+    const box = ce.set;
+    const chk = (key, label) => `<label class="mchk"><input type="checkbox" data-o="${key}"><span>${label}</span></label>`;
+    const axis = (ax) => `<div class="maxis">`
+      + `<div class="maxis-top">${chk(ax + 'Axis', ax.toUpperCase() + '-axis')}<label class="mfield"><span>Label</span><input type="text" data-o="${ax}Label" placeholder="e.g. ${ax}" maxlength="24"></label></div>`
+      + `<div class="mrange"><input type="text" inputmode="decimal" data-r="${ax}min" aria-label="${ax} minimum"><span class="mle">≤ <i>${ax}</i> ≤</span><input type="text" inputmode="decimal" data-r="${ax}max" aria-label="${ax} maximum">`
+      + `<label class="mfield small"><span>Step</span><input type="text" inputmode="decimal" data-o="${ax}Step" placeholder="auto"></label></div></div>`;
+    box.innerHTML = `<div class="mopts">${chk('grid', 'Grid')}${chk('numbers', 'Axis numbers')}${chk('minor', 'Minor gridlines')}${chk('arrows', 'Arrows')}`
+      + `<span class="marrows" role="group" aria-label="Arrow style">`
+      + `<button type="button" data-ab="0" title="Arrows on the positive ends" aria-label="Arrows on the positive ends">${svg('M4 12h16 M16 8l4 4-4 4 M12 20V4 M8 8l4-4 4 4')}</button>`
+      + `<button type="button" data-ab="1" title="Arrows on both ends" aria-label="Arrows on both ends">${svg('M3 12h18 M17 8l4 4-4 4 M7 8l-4 4 4 4 M12 3v18 M8 7l4-4 4 4 M8 17l4 4 4-4')}</button></span></div>`
+      + axis('x') + axis('y');
+    const o = () => ce.card.opts;
+    const changed = () => { drawGraph(ce); touchNote(); };
+    box.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && e.target.matches('input')) e.target.blur();
+    });
+    box.addEventListener('change', (e) => {
+      const t = e.target;
+      if (t.dataset.o) {
+        const key = t.dataset.o;
+        if (t.type === 'checkbox') o()[key] = t.checked;
+        else if (/Step$/.test(key)) { const n = Number(t.value); o()[key] = Number.isFinite(n) && n > 0 ? n : 0; }
+        else o()[key] = t.value.trim();
+        changed();
+        syncGraphSettings(ce);
+      } else if (t.dataset.r) {
+        applyRange(ce, t.dataset.r[0]);
+      }
+    });
+    box.querySelectorAll('[data-ab]').forEach((b) => b.addEventListener('click', () => {
+      o().arrowBoth = b.dataset.ab === '1';
+      o().arrows = true;
+      changed();
+      syncGraphSettings(ce);
+    }));
+  }
+  function applyRange(ce, ax) {
+    const box = ce.set;
+    const lo = Number(box.querySelector(`[data-r="${ax}min"]`).value), hi = Number(box.querySelector(`[data-r="${ax}max"]`).value);
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
+      toast('The first number must be smaller than the second.');
+      syncGraphSettings(ce);
+      return;
+    }
+    const v = ce.card.view, { W, H } = graphRange(ce);
+    const { sx, sy } = scales(v);
+    if (ax === 'x') {
+      v.s = clamp(W / (hi - lo), 0.02, 50000);
+      v.cx = (lo + hi) / 2;
+      if (!v.sy) v.sy = sy; // keep y as it was
+    } else {
+      v.sy = clamp(H / (hi - lo), 0.02, 50000);
+      v.cy = (lo + hi) / 2;
+      v.s = v.s || sx;
+    }
+    drawGraph(ce);
+    touchNote();
+  }
+  function syncGraphSettings(ce, rangesOnly) {
+    const box = ce.set, o = ce.card.opts;
+    if (!box) return;
+    const r = graphRange(ce);
+    const fmt = (n) => fmtNum(Number(n.toPrecision(6)));
+    [['xmin', r.xmin], ['xmax', r.xmax], ['ymin', r.ymin], ['ymax', r.ymax]].forEach(([k, val]) => {
+      const i = box.querySelector(`[data-r="${k}"]`);
+      if (i && document.activeElement !== i) i.value = fmt(val);
+    });
+    if (rangesOnly) return;
+    box.querySelectorAll('[data-o]').forEach((i) => {
+      if (document.activeElement === i) return;
+      const key = i.dataset.o;
+      if (i.type === 'checkbox') i.checked = !!o[key];
+      else if (/Step$/.test(key)) i.value = o[key] > 0 ? o[key] : '';
+      else i.value = o[key] || '';
+    });
+    box.querySelectorAll('[data-ab]').forEach((b) => b.classList.toggle('on', (b.dataset.ab === '1') === !!o.arrowBoth));
   }
   let graphTimer = 0;
   function redrawGraphs() {

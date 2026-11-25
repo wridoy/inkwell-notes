@@ -345,6 +345,30 @@ body:not(.panel-open) #toolPanel { display: none; }
 .mslider { display: flex; align-items: center; gap: 8px; padding: 0 10px 6px 26px; font-size: 11px; color: #5d6b7d; }
 .mslider[hidden] { display: none; }
 .mslider input { flex: 1; accent-color: #2f6fd0; }
+.mbtn.on { background: #e2ebf5; color: #2f5d8a; }
+/* graph settings inside a math card (cards are always light, like paper) */
+.mset { border-top: 1px solid #e6ebf1; padding: 10px 12px 6px; font-size: 13px; color: #1c2430; background: #fbfcfd; }
+.mset[hidden] { display: none; }
+.mopts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid #e6ebf1; }
+.mchk { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; white-space: nowrap; }
+.mchk input { width: 17px; height: 17px; margin: 0; accent-color: #2f6fd0; }
+.marrows { display: inline-flex; gap: 6px; }
+.marrows button { width: 32px; height: 32px; border-radius: 50%; border: 1px solid #cfd7e2; background: #fff; color: #5d6b7d; display: grid; place-items: center; padding: 0; }
+.marrows button.on { background: #2f5d8a; border-color: #2f5d8a; color: #fff; }
+.marrows svg { width: 18px; height: 18px; }
+.maxis { padding: 10px 0 6px; }
+.maxis + .maxis { border-top: 1px solid #e6ebf1; }
+.maxis-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.mfield { position: relative; display: inline-flex; flex-direction: column; }
+.mfield span { position: absolute; top: -7px; left: 8px; padding: 0 3px; background: #fbfcfd; font-size: 10px; color: #5d6b7d; line-height: 1.2; }
+.mfield input { width: 130px; border: 1px solid #cfd7e2; border-radius: 8px; padding: 7px 8px 5px; font: inherit; color: #1c2430; background: #fff; }
+.mfield.small input { width: 64px; }
+.mrange { display: flex; align-items: center; gap: 6px; }
+.mrange > input { width: 78px; border: 0; border-bottom: 1px solid #cfd7e2; padding: 4px 2px; font: 14px "Cambria Math", Cambria, serif; color: #1c2430; background: none; text-align: center; min-width: 0; }
+.mrange > input:focus, .mfield input:focus { outline: none; border-color: #2f6fd0; }
+.mle { white-space: nowrap; color: #5d6b7d; }
+.mle i { font-family: "Cambria Math", Cambria, serif; color: #1c2430; }
+.mrange .mfield { margin-left: auto; }
 .mgraph { position: relative; border-top: 1px solid #e6ebf1; border-radius: 0 0 12px 12px; overflow: hidden; }
 .mgraph[hidden] { display: none; }
 .mgraph canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
