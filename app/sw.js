@@ -1,5 +1,5 @@
 /* Offline support: network first (skipping the browser's HTTP cache), falling back to the cached copy. */
-const CACHE = 'inkwell-v20';
+const CACHE = 'inkwell-v21';
 const ASSETS = [
   './',
   './index.html',

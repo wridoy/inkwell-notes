@@ -231,7 +231,7 @@
     notes: [], folders: ['Personal', 'School', 'Work'], note: null, folder: prefs.get('view', 'folders'), query: '',
     openFolders: prefs.get('openFolders', {}), tool: prefs.get('tool', 'pen'), zoomLock: prefs.get('zoomLock', false),
     ...syncedPrefState(),
-    penOnly: prefs.get('penOnly', false), penSeen: prefs.get('penSeen', false),
+    penOnly: prefs.get('penOnly', false), penSeen: prefs.get('penSeen', false), palm: prefs.get('palm', true),
     panelOpen: false, reading: false,
     zoom: 1, autoFit: true, sel: [], selCards: [], undo: [], redo: [], storageOk: true,
   };
@@ -239,11 +239,14 @@
 
   const el = {
     folderList: $('#folderList'), noteList: $('#noteList'), search: $('#search'), title: $('#titleInput'), save: $('#saveState'),
-    scroller: $('#scroller'), wrap: $('#pageWrap'), cv: $('#page'), ink: $('#ink'), layer: $('#cardLayer'), panel: $('#toolPanel'), rail: $('#rail'),
+    scroller: $('#scroller'), wrap: $('#pageWrap'), cv: $('#page'), ink: $('#ink'), live: $('#live'), layer: $('#cardLayer'), panel: $('#toolPanel'), rail: $('#rail'),
     toast: $('#toast'), installBtn: $('#installBtn'),
   };
   const ctx = el.cv.getContext('2d'); // paper and PDF pages, below math cards
   const ictx = el.ink.getContext('2d'); // handwriting, shapes, text and pictures, above math cards
+  // the pen stroke being written: its own low-latency layer, redrawn on every pen move
+  // without waiting for the next frame or repainting the rest of the page
+  const lctx = el.live.getContext('2d', { desynchronized: true }) || el.live.getContext('2d');
   const mctx = document.createElement('canvas').getContext('2d');
 
   let toastTimer = 0;
@@ -1013,7 +1016,7 @@
     view = { x0, y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
     dpr = Math.min(window.devicePixelRatio || 1, 3);
     const pw = Math.max(1, Math.round(view.w * dpr)), ph = Math.max(1, Math.round(view.h * dpr));
-    for (const c of [el.cv, el.ink]) {
+    for (const c of [el.cv, el.ink, el.live]) {
       const s = c.style;
       s.left = x0 + 'px';
       s.top = y0 + 'px';
@@ -1628,7 +1631,7 @@
       drawText(ctx, Object.assign({ x: editor.x, y: editor.y, text: editor.ta.value, color: editor.color, checks: editor.obj ? editor.obj.checks : null }, editor.style), true);
       ctx.restore();
     }
-    if (action && action.live) drawObj(ctx, action.snapped || action.live);
+    if (action && action.live && !(action.fast && !action.snapped)) drawObj(ctx, action.snapped || action.live);
     if (action && action.lasso && action.lasso.length > 1) {
       ctx.save();
       ctx.strokeStyle = '#2f6fd0';
@@ -1652,21 +1655,56 @@
       ctx.stroke();
       ctx.restore();
     }
+    drawLive();
+  }
+  let liveDirty = false;
+  function drawLive() {
+    const a = action, c = lctx;
+    if (liveDirty) {
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, el.live.width, el.live.height);
+      liveDirty = false;
+    }
+    if (!a || !a.fast || !a.live || a.snapped || !S.note) return;
+    const z = S.zoom;
+    c.setTransform(dpr * z, 0, 0, dpr * z, -view.x0 * dpr, -view.y0 * dpr);
+    // where the pen is heading next (from the browser's prediction), drawn but never saved
+    drawObj(c, a.pred && a.pred.length ? Object.assign({}, a.live, { pts: a.live.pts.concat(a.pred) }) : a.live);
+    liveDirty = true;
   }
 
   /* ---------------- pointer input ---------------- */
   let action = null;
   let gesture = null;
+  const RAW = 'onpointerrawupdate' in window;
   const touches = new Map();
   const pagePt = (e) => {
     const r = el.wrap.getBoundingClientRect();
     return { x: (e.clientX - r.left) / S.zoom, y: (e.clientY - r.top) / S.zoom };
   };
+  // palm rejection: a touch is ignored while the pen is on or just above the screen,
+  // or when its contact is as big as a resting hand
+  const palms = new Set();
+  let penSeenAt = -1e9;
+  const PALM_SIZE = 40;
+  const bigContact = (e) => Math.max(e.width || 0, e.height || 0) > PALM_SIZE;
+  const isPalm = (e) => S.palm && (performance.now() - penSeenAt < 400 || (action && action.pen) || bigContact(e));
+  function palmDown() {
+    // a hand that landed just before the pen: drop its touches and undo the scroll it caused
+    if (!touches.size) return;
+    touches.forEach((v, id) => palms.add(id));
+    touches.clear();
+    if (gesture && performance.now() - gesture.t0 < 500) { el.scroller.scrollLeft = gesture.sl; el.scroller.scrollTop = gesture.st; }
+    gesture = null;
+    if (action && action.touch) cancelAction();
+  }
   const pressureOf = (e) => (e.pointerType === 'pen' ? (e.pressure > 0 ? e.pressure : 0.5) : 0.5);
   const eraserRadius = () => (S.eraseMode === 'area' ? S.widths.eraser / 2 : 10 / S.zoom);
 
   function onDown(e) {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    stopFling();
+    if (e.pointerType === 'pen') { penSeenAt = performance.now(); if (S.palm) palmDown(); }
     if (e.pointerType === 'pen' && !S.penSeen) {
       S.penSeen = true;
       prefs.set('penSeen', true);
@@ -1678,6 +1716,7 @@
       }
     }
     if (e.pointerType === 'touch') {
+      if (isPalm(e)) { palms.add(e.pointerId); capture(el.cv, e); e.preventDefault(); return; }
       touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
       capture(el.cv, e);
       if (S.penOnly || S.reading || touches.size > 1) {
@@ -1701,11 +1740,12 @@
     const p = cp;
     let tool = S.tool;
     if (e.pointerType === 'pen' && (e.button === 5 || e.button === 2 || (e.buttons & 32) || (e.buttons & 2))) tool = 'eraser';
-    action = { pointerId: e.pointerId, touch: e.pointerType === 'touch', tool, start: p, last: p };
+    action = { pointerId: e.pointerId, touch: e.pointerType === 'touch', pen: e.pointerType === 'pen', tool, start: p, last: p };
     if (tool === 'pen' || tool === 'highlighter' || tool === 'tape') {
       const pt = [r1(p.x), r1(p.y), r2(pressureOf(e))];
       if (tool === 'pen') {
         action.live = { type: 'stroke', pts: [pt], color: S.colors.pen, width: S.widths.pen, pr: e.pointerType === 'pen', pen: S.penType, style: S.lineStyle };
+        action.fast = true;
       } else if (tool === 'highlighter') {
         action.live = { type: 'stroke', pts: [pt], color: S.colors.highlighter, width: S.widths.highlighter, alpha: r2(S.hlOpacity / 100), hl: true, tip: S.hlTip, pr: false };
       } else {
@@ -1784,7 +1824,16 @@
   }
 
   function onMove(e) {
+    if (e.pointerType === 'pen') penSeenAt = performance.now(); // also fires while the pen hovers
+    if (palms.has(e.pointerId)) return;
     if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
+      if (S.palm && bigContact(e)) { // a finger that spreads into a palm
+        touches.delete(e.pointerId);
+        palms.add(e.pointerId);
+        if (action && action.touch && action.pointerId === e.pointerId) cancelAction();
+        if (gesture) { if (touches.size) startGesture(); else endGesture(true); }
+        return;
+      }
       touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (gesture) { moveGesture(); return; }
     }
@@ -1802,17 +1851,21 @@
       if (a.straight) {
         a.live.pts = [a.live.pts[0], [r1(p.x), r1(yOf(p.y)), r2(pressureOf(e))]];
       } else {
+        const r = el.wrap.getBoundingClientRect(), z = S.zoom;
+        const at = (ev) => [r1((ev.clientX - r.left) / z), r1(yOf((ev.clientY - r.top) / z)), r2(pressureOf(ev))];
         const evs = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
         for (const ev of evs.length ? evs : [e]) {
-          const q = pagePt(ev);
+          const q = at(ev);
           const last = a.live.pts[a.live.pts.length - 1];
-          if (Math.hypot(q.x - last[0], q.y - last[1]) < 0.8 / S.zoom) continue;
-          a.live.pts.push([r1(q.x), r1(yOf(q.y)), r2(pressureOf(ev))]);
+          if (Math.hypot(q[0] - last[0], q[1] - last[1]) < 0.8 / z) continue;
+          a.live.pts.push(q);
         }
+        if (a.fast) a.pred = ((e.getPredictedEvents && e.getPredictedEvents()) || []).slice(0, 3).map(at);
         if (a.tool === 'pen' && Math.hypot(p.x - a.holdX, p.y - a.holdY) > 4 / S.zoom) armSnap(p);
       }
       autoGrow(p.y);
-      requestRender();
+      if (a.fast && !a.snapped) drawLive();
+      else requestRender();
     } else if (a.live && a.live.type === 'shape') {
       let x2 = p.x, y2 = p.y;
       if (e.shiftKey) {
@@ -1875,6 +1928,8 @@
   }
 
   function onUp(e) {
+    if (e.pointerType === 'pen') penSeenAt = performance.now();
+    if (palms.delete(e.pointerId)) return;
     if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
       touches.delete(e.pointerId);
       if (gesture) { if (touches.size === 0) endGesture(); else startGesture(); return; }
@@ -1946,6 +2001,7 @@
     render();
   }
   function onCancel(e) {
+    if (palms.delete(e.pointerId)) return;
     if (touches.has(e.pointerId)) {
       touches.delete(e.pointerId);
       if (gesture && touches.size === 0) endGesture();
@@ -2051,7 +2107,12 @@
 
   function startGesture() {
     const pts = [...touches.values()];
-    gesture = { n: pts.length, c: center(pts), d: pts.length > 1 ? dist(pts[0], pts[1]) : 0 };
+    const g = gesture, t = performance.now();
+    gesture = {
+      n: pts.length, c: center(pts), d: pts.length > 1 ? dist(pts[0], pts[1]) : 0, t,
+      vx: g ? g.vx : 0, vy: g ? g.vy : 0, t0: g ? g.t0 : t,
+      sl: g ? g.sl : el.scroller.scrollLeft, st: g ? g.st : el.scroller.scrollTop,
+    };
   }
   function moveGesture() {
     const pts = [...touches.values()];
@@ -2062,12 +2123,43 @@
       if (gesture.d > 0 && d > 0) setZoom(S.zoom * (d / gesture.d), c.x, c.y);
       gesture.d = d;
     }
-    el.scroller.scrollLeft -= c.x - gesture.c.x;
-    el.scroller.scrollTop -= c.y - gesture.c.y;
+    const dx = c.x - gesture.c.x, dy = c.y - gesture.c.y;
+    el.scroller.scrollLeft -= dx;
+    el.scroller.scrollTop -= dy;
+    const t = performance.now(), dt = Math.max(1, t - gesture.t);
+    gesture.vx = gesture.vx * 0.5 + (dx / dt) * 0.5;
+    gesture.vy = gesture.vy * 0.5 + (dy / dt) * 0.5;
     gesture.c = c;
+    gesture.t = t;
     requestLayout();
   }
-  function endGesture() { gesture = null; redrawGraphs(); }
+  // lifting the fingers mid-swipe lets the page glide on and slow down
+  let fling = 0;
+  function endGesture(still) {
+    const g = gesture;
+    gesture = null;
+    if (!still && g && performance.now() - g.t < 80 && Math.hypot(g.vx, g.vy) > 0.25) startFling(g.vx, g.vy);
+    else redrawGraphs();
+  }
+  function startFling(vx, vy) {
+    stopFling();
+    let last = performance.now();
+    const step = (t) => {
+      const dt = Math.min(40, Math.max(0, t - last));
+      last = t;
+      const sl = el.scroller.scrollLeft, st = el.scroller.scrollTop;
+      el.scroller.scrollLeft -= vx * dt;
+      el.scroller.scrollTop -= vy * dt;
+      const k = Math.pow(0.996, dt);
+      vx *= k; vy *= k;
+      const stuck = dt > 0 && sl === el.scroller.scrollLeft && st === el.scroller.scrollTop;
+      if (stuck || Math.hypot(vx, vy) < 0.02) { fling = 0; redrawGraphs(); return; }
+      requestLayout();
+      fling = requestAnimationFrame(step);
+    };
+    fling = requestAnimationFrame(step);
+  }
+  function stopFling() { if (fling) { cancelAnimationFrame(fling); fling = 0; redrawGraphs(); } }
 
   /* ---------------- selection actions ---------------- */
   let clip = null; // { objs, cards } copied with the lasso
@@ -3964,17 +4056,32 @@
   const railSep = () => { const d = document.createElement('div'); d.className = 'rail-sep'; return d; };
   const COLOR_TOOLS = ['pen', 'highlighter', 'text', 'shape', 'tape', 'restyle'];
   const colorToolOf = () => (COLOR_TOOLS.includes(S.tool) ? S.tool : S.tool === 'select' ? 'select' : 'pen');
-  const recentFromPrefs = () => Object.assign({
-    pen: ['#1c2430', '#d1453b', '#2f6fd0', '#2e9d57', '#f2b01e'],
-    highlighter: ['#fff176', '#b9f6ca', '#80d8ff', '#ff9ecb', '#ffcc80'],
-  }, prefs.get('recent', {}));
+  // ten quick swatches per kind; saved sets from before (five) are topped up with the newer colours
+  const QUICK_N = 10;
+  const QUICK_DEF = {
+    pen: ['#1c2430', '#d1453b', '#2f6fd0', '#2e9d57', '#f2b01e', '#7b4fd6', '#e08a1e', '#0f9fa8', '#d6458f', '#8d5b3b'],
+    highlighter: ['#fff176', '#b9f6ca', '#80d8ff', '#ff9ecb', '#ffcc80', '#ffd54f', '#e1bee7', '#cfd8dc', '#c5e1a5', '#ffab91'],
+  };
+  const recentFromPrefs = () => {
+    const saved = prefs.get('recent', {}) || {};
+    const out = {};
+    for (const k of Object.keys(QUICK_DEF)) {
+      const list = Array.isArray(saved[k]) && saved[k].length ? saved[k].slice(0, QUICK_N) : QUICK_DEF[k].slice(0, 5);
+      for (const c of QUICK_DEF[k]) {
+        if (list.length >= QUICK_N) break;
+        if (!list.some((x) => x.toLowerCase() === c)) list.push(c);
+      }
+      out[k] = list;
+    }
+    return out;
+  };
   S.recent = recentFromPrefs();
   // swatches used to jump to the front when picked; put the default colours back in their slots once
   if (!prefs.get('recentFixed', false)) {
     const DEF = { pen: ['#1c2430', '#d1453b', '#2f6fd0', '#2e9d57', '#f2b01e'], highlighter: ['#fff176', '#b9f6ca', '#80d8ff', '#ff9ecb', '#ffcc80'] };
     for (const k of Object.keys(DEF)) {
       const has = (c) => S.recent[k].some((x) => x.toLowerCase() === c);
-      S.recent[k] = [...DEF[k].filter(has), ...S.recent[k].filter((x) => !DEF[k].includes(x.toLowerCase()))].slice(0, 5);
+      S.recent[k] = [...DEF[k].filter(has), ...S.recent[k].filter((x) => !DEF[k].includes(x.toLowerCase()))].slice(0, QUICK_N);
     }
     prefs.set('recent', S.recent, true);
     prefs.set('recentFixed', true);
@@ -4457,6 +4564,7 @@
         toggle(p, 'Straighten lines', '', () => S.straighten.pen, (v) => { S.straighten.pen = v; prefs.set('straighten', S.straighten); });
         toggle(p, 'Hold to snap shapes', '', () => S.snap, (v) => { S.snap = v; prefs.set('snap', v); });
         toggle(p, 'Draw with pen only', 'Fingers scroll and zoom instead.', () => S.penOnly, (v) => { S.penOnly = v; prefs.set('penOnly', v); });
+        toggle(p, 'Palm rejection', 'Ignore your hand while the pen is writing or near the screen.', () => S.palm, (v) => { S.palm = v; prefs.set('palm', v); });
         colorGrid(pSection(p), PALETTE, S.colors.pen, (c) => setToolColor('pen', c));
         favSection(p, 'pen');
         break;
@@ -4689,7 +4797,8 @@
   /* ---------------- wiring ---------------- */
   function wire() {
     el.cv.addEventListener('pointerdown', onDown);
-    el.cv.addEventListener('pointermove', onMove);
+    el.cv.addEventListener('pointermove', (e) => { if (!(RAW && action && action.fast && e.pointerId === action.pointerId)) onMove(e); });
+    if (RAW) el.cv.addEventListener('pointerrawupdate', (e) => { if (action && action.fast && e.pointerId === action.pointerId) onMove(e); });
     el.cv.addEventListener('pointerup', onUp);
     el.cv.addEventListener('pointercancel', onCancel);
     el.cv.addEventListener('lostpointercapture', (e) => { if (action && e.pointerId === action.pointerId && e.pointerType !== 'mouse') onCancel(e); });
@@ -4702,6 +4811,7 @@
     el.cv.addEventListener('contextmenu', (e) => e.preventDefault());
     el.scroller.addEventListener('scroll', requestLayout, { passive: true });
     el.scroller.addEventListener('wheel', (e) => {
+      stopFling();
       if (!e.ctrlKey) return;
       e.preventDefault();
       setZoom(S.zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
