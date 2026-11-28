@@ -3847,18 +3847,36 @@
     });
     m.append(row);
     mSep(m);
+    buildDefaultStyle(m);
+  }
+  // pick the template and paper colour that every new note starts with
+  function buildDefaultStyle(m) {
+    mLabel(m, 'Default for new notes');
+    const box = document.createElement('div');
+    box.className = 'def-style';
     const d = defaultStyle();
-    if (d.bg === S.note.bg && d.paper === S.note.paper) {
-      const t = document.createElement('div');
-      t.className = 'menu-note';
-      t.textContent = 'New notes start with this style.';
-      m.append(t);
-    } else {
-      mItem(m, 'Use this style for new notes', ICON.style, () => {
-        prefs.set('noteStyle', { bg: S.note.bg, paper: S.note.paper });
+    const pick = (label, list, cur, key) => {
+      const l = document.createElement('label');
+      l.innerHTML = '<span></span><select></select>';
+      $('span', l).textContent = label;
+      const sel = $('select', l);
+      list.forEach(([k, name]) => { const o = new Option(name, k, false, k === cur); sel.add(o); });
+      sel.onchange = () => {
+        const nd = Object.assign(defaultStyle(), { [key]: sel.value });
+        prefs.set('noteStyle', nd);
+        same.style.display = nd.bg === S.note.bg && nd.paper === S.note.paper ? 'none' : '';
         toast('New notes will start with this style.');
-      });
-    }
+      };
+      box.append(l);
+    };
+    pick('Template', TEMPLATES, d.bg, 'bg');
+    pick('Paper', Object.entries(PAPERS).map(([k, p]) => [k, p.name]), d.paper, 'paper');
+    m.append(box);
+    const same = mItem(m, "Use this note's style", ICON.style, () => {
+      prefs.set('noteStyle', { bg: S.note.bg, paper: S.note.paper });
+      toast('New notes will start with this style.');
+    });
+    same.style.display = d.bg === S.note.bg && d.paper === S.note.paper ? 'none' : '';
   }
   function buildInsertMenu(m) {
     mItem(m, 'Picture', ICON.image, () => $('#imageInput').click());
