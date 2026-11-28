@@ -1,0 +1,15 @@
+# Keep secrets and personal files out of this public repository.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+credentials*.json
+client_secret*.json
+.claude/settings.local.json
+
+# Local clutter
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
