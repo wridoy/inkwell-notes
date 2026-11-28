@@ -4861,12 +4861,12 @@
       renderSidebar();
     },
     onStatus(s, d) {
-      const b = $('#syncBtn');
-      if (!b) return;
-      b.dataset.state = s;
-      b.title = SYNC_TEXT[s] + (d ? ' — ' + d : '');
-      b.setAttribute('aria-label', b.title);
-      b.hidden = false;
+      document.querySelectorAll('.sync-btn').forEach((b) => {
+        b.dataset.state = s;
+        b.title = SYNC_TEXT[s] + (d ? ' — ' + d : '');
+        b.setAttribute('aria-label', b.title);
+        b.hidden = false;
+      });
     },
   }) : null;
   let syncOpenNoteChanged = false;
@@ -4936,8 +4936,11 @@
     openNote(liveNotes().find((n) => n.id === last) || visibleNotes()[0] || liveNotes()[0]);
     setLibrary(true); // the app opens on the folders screen; the last note waits behind it
     setTimeout(gcAllBlobs, 4000);
-    const sb = $('#syncBtn');
-    if (sb) { sb.innerHTML = svg(ICON.cloud) + '<i></i>'; sb.onclick = () => (Sync ? openMenu(sb, buildSyncMenu) : null); sb.hidden = !Sync; if (Sync) Sync.info && sb.setAttribute('data-state', 'off'); }
+    document.querySelectorAll('.sync-btn').forEach((sb) => {
+      sb.innerHTML = svg(ICON.cloud) + '<i></i>';
+      sb.onclick = () => (Sync ? openMenu(sb, buildSyncMenu) : null);
+      sb.hidden = !Sync;
+    });
     if (Sync && S.storageOk) Sync.start();
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
       // an installed app often just resumes instead of reloading, so look for a new version

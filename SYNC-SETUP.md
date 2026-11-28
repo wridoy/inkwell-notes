@@ -27,14 +27,15 @@ changed on two devices while offline, both versions are kept.
    - Application type: **Web application**, name: `Inkwell`
    - **Authorised JavaScript origins** → add:
      - `https://wridoy.github.io`
-     - `http://localhost:5174` (only for testing on the PC)
+     - `http://localhost:5173` (only for testing on the PC)
    - **Authorised redirect URIs** → add:
      - `https://wridoy.github.io/inkwell-notes/`
-     - `http://localhost:5174/`
+     - `http://localhost:5173/`
    - Click **Create** and copy the **Client ID** (it ends in `.apps.googleusercontent.com`).
      You do **not** need the client secret. Never paste it anywhere.
-7. In Inkwell, tap the **cloud** button in the top bar (or **More → Sync with Google Drive…**),
-   paste the Client ID and tap **Connect Google Drive**.
+7. In Inkwell, tap the **cloud** button: it is at the top of the folders screen, and in the top bar
+   when a note is open (or use **More → Sync with Google Drive…** inside a note).
+   Then paste the Client ID and tap **Connect Google Drive**.
    Google will say it hasn't verified the app: that's expected for your own app.
    Tap **Continue** and allow access.
 8. Do step 7 on your other devices (PC and tablet) with the same Client ID.
