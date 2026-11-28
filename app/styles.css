@@ -443,6 +443,7 @@ body:not(.panel-open) #toolPanel { display: none; }
 .sync-btn[data-state="off"] i { display: none; }
 @keyframes syncPulse { 50% { opacity: .3; } }
 .menu.wide { width: min(360px, calc(100vw - 16px)); }
+.menu.color-menu { padding: 12px; }
 .sync-info { padding: 4px 10px 8px; font-size: 13px; line-height: 1.45; display: flex; flex-direction: column; gap: 6px; }
 .sync-info p { margin: 0; }
 .sync-info .muted { color: var(--muted); }

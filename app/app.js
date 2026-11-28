@@ -3997,27 +3997,21 @@
   function editQuickColor(btn, tool, i, apply) {
     const k = recentKey(tool);
     const old = S.recent[k][i];
-    const r = btn.getBoundingClientRect();
-    // one hidden colour input, reused, placed under the swatch so the picker opens there
-    let ci = $('#quickColorEdit');
-    if (!ci) {
-      ci = document.createElement('input');
-      ci.type = 'color';
-      ci.id = 'quickColorEdit';
-      ci.tabIndex = -1;
-      ci.setAttribute('aria-hidden', 'true');
-      document.body.append(ci);
-    }
-    ci.style.cssText = `position:fixed;left:${r.left}px;top:${r.bottom}px;width:${r.width}px;height:1px;opacity:0;border:0;padding:0;pointer-events:none`;
-    ci.value = /^#[0-9a-f]{6}$/i.test(old) ? old : '#000000';
-    ci.onchange = () => {
-      const c = ci.value;
-      if (!c || c.toLowerCase() === old.toLowerCase()) return;
-      S.recent[k] = S.recent[k].map((x, j) => (j === i ? c : x));
-      prefs.set('recent', S.recent);
-      apply(c);
-    };
-    try { if (ci.showPicker) ci.showPicker(); else ci.click(); } catch (_) { ci.click(); }
+    // a pop-up colour grid under the swatch; the colour picked there replaces that swatch
+    if (S.panelOpen) setPanel(false);
+    openMenu(btn, (m) => {
+      m.classList.add('wide', 'color-menu');
+      const pal = k === 'highlighter' ? HL_PALETTE.concat(PALETTE.slice(4, 32)) : PALETTE;
+      colorGrid(m, pal, old, (c) => {
+        closeMenu();
+        if (!c) return;
+        if (c.toLowerCase() !== old.toLowerCase()) {
+          S.recent[k] = S.recent[k].map((x, j) => (j === i ? c : x));
+          prefs.set('recent', S.recent);
+        }
+        apply(c);
+      });
+    });
   }
   function updateRail() {
     el.rail.querySelectorAll('[data-tool]').forEach((b) => {
