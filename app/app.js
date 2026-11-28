@@ -3916,12 +3916,16 @@
     prefs.set('recentFixed', true);
   }
   const recentKey = (tool) => (tool === 'highlighter' ? 'highlighter' : 'pen');
-  function pushRecent(tool, c) {
+  function pushRecent(tool, c, prev) {
     if (!c) return;
     const k = recentKey(tool);
-    // swatches stay where they are; only a colour that isn't there yet takes the last slot
-    if (S.recent[k].some((x) => x.toLowerCase() === c.toLowerCase())) return;
-    S.recent[k] = [...S.recent[k].slice(0, 4), c];
+    const same = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+    // swatches stay where they are; a colour that isn't there yet replaces the selected swatch
+    // (the one holding the previous colour), or the last one if none is selected
+    if (S.recent[k].some((x) => same(x, c))) return;
+    let i = S.recent[k].findIndex((x) => same(x, prev));
+    if (i < 0) i = S.recent[k].length - 1;
+    S.recent[k] = S.recent[k].map((x, j) => (j === i ? c : x));
     prefs.set('recent', S.recent);
   }
   function buildRail() {
@@ -3967,16 +3971,21 @@
     const curObj = S.sel.find((o) => o.color);
     const cur = tool === 'select' ? curObj && curObj.color : S.colors[tool];
     qc.innerHTML = '';
-    S.recent[recentKey(tool)].forEach((c) => {
+    const apply = (c) => {
+      if (tool === 'select') setSelColor(c);
+      else { setToolColor(tool, c); if (!COLOR_TOOLS.includes(S.tool)) setTool('pen'); }
+    };
+    let activeSeen = false;
+    S.recent[recentKey(tool)].forEach((c, i) => {
       const b = document.createElement('button');
-      b.className = 'qc' + (cur && cur.toLowerCase() === c.toLowerCase() ? ' active' : '');
+      const active = !activeSeen && !!cur && cur.toLowerCase() === c.toLowerCase();
+      if (active) activeSeen = true;
+      b.className = 'qc' + (active ? ' active' : '');
       b.style.setProperty('--c', c);
-      b.title = c;
-      b.setAttribute('aria-label', 'Colour ' + c);
-      b.onclick = () => {
-        if (tool === 'select') setSelColor(c);
-        else { setToolColor(tool, c); if (!COLOR_TOOLS.includes(S.tool)) setTool('pen'); }
-      };
+      b.title = active ? 'Tap again to change this colour' : c;
+      b.setAttribute('aria-label', active ? 'Change colour ' + c : 'Colour ' + c);
+      // tapping the colour that's already picked lets you change that swatch
+      b.onclick = () => (active ? editQuickColor(b, tool, i, apply) : apply(c));
       qc.append(b);
     });
     if (tb) {
@@ -3984,6 +3993,31 @@
       const i = $('i', tb);
       i.style.height = clamp(w / 3, 1.5, 9) + 'px';
     }
+  }
+  function editQuickColor(btn, tool, i, apply) {
+    const k = recentKey(tool);
+    const old = S.recent[k][i];
+    const r = btn.getBoundingClientRect();
+    // one hidden colour input, reused, placed under the swatch so the picker opens there
+    let ci = $('#quickColorEdit');
+    if (!ci) {
+      ci = document.createElement('input');
+      ci.type = 'color';
+      ci.id = 'quickColorEdit';
+      ci.tabIndex = -1;
+      ci.setAttribute('aria-hidden', 'true');
+      document.body.append(ci);
+    }
+    ci.style.cssText = `position:fixed;left:${r.left}px;top:${r.bottom}px;width:${r.width}px;height:1px;opacity:0;border:0;padding:0;pointer-events:none`;
+    ci.value = /^#[0-9a-f]{6}$/i.test(old) ? old : '#000000';
+    ci.onchange = () => {
+      const c = ci.value;
+      if (!c || c.toLowerCase() === old.toLowerCase()) return;
+      S.recent[k] = S.recent[k].map((x, j) => (j === i ? c : x));
+      prefs.set('recent', S.recent);
+      apply(c);
+    };
+    try { if (ci.showPicker) ci.showPicker(); else ci.click(); } catch (_) { ci.click(); }
   }
   function updateRail() {
     el.rail.querySelectorAll('[data-tool]').forEach((b) => {
@@ -4035,9 +4069,10 @@
     toast(S.zoomLock ? "Zoom locked: pinching and the zoom buttons won't change the zoom." : 'Zoom unlocked');
   }
   function setToolColor(tool, c) {
+    const prev = S.colors[tool];
     S.colors[tool] = c;
     prefs.set('colors', S.colors);
-    pushRecent(tool, c);
+    pushRecent(tool, c, prev);
     if (tool === 'text') {
       if (editor) { editor.color = c; styleEditor(); }
       else {
@@ -4051,9 +4086,11 @@
   function setSelColor(c) {
     const items = S.sel.filter((o) => o.type !== 'image' && !(o.type === 'stroke' && o.tape && o.pattern != null));
     if (!items.length) return;
+    const prevObj = S.sel.find((o) => o.color);
+    const prev = prevObj && prevObj.color;
     pushHistory();
     items.forEach((o) => { o.color = c; });
-    pushRecent('pen', c);
+    pushRecent('pen', c, prev);
     touchNote();
     render();
     updateRail();
