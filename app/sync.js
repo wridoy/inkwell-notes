@@ -13,7 +13,7 @@ window.InkwellSync = function InkwellSync(host) {
   const BUILT_IN_CLIENT_ID = '';
 
   let auth = null; // { clientId, email, access, exp }
-  const fresh = () => ({ cursor: null, ids: {}, revs: {}, synced: {}, blobs: {}, foldersSynced: 0, last: 0 });
+  const fresh = () => ({ cursor: null, ids: {}, revs: {}, synced: {}, blobs: {}, foldersSynced: 0, settingsSynced: 0, last: 0 });
   let st = fresh();
   let status = 'off', detail = '';
   let running = null, again = false, timer = 0, backoff = 0;
@@ -220,6 +220,22 @@ window.InkwellSync = function InkwellSync(host) {
         } catch (err) { /* ignore a damaged file */ }
       }
     }
+    // settings and colour swatches: the most recent change wins
+    const settingsFile = files.find((f) => f.name === 'settings.json' && isNew(f));
+    if (settingsFile) {
+      const b = await download(settingsFile.id);
+      if (b) {
+        try {
+          const s = JSON.parse(await b.text());
+          st.revs[settingsFile.name] = String(settingsFile.version);
+          if (s && s.data && typeof s.data === 'object' && s.updated > host.settingsUpdated()) {
+            host.setSettings(s.data, s.updated);
+            st.settingsSynced = s.updated;
+            changed++;
+          }
+        } catch (err) { /* ignore a damaged file */ }
+      }
+    }
     st.cursor = cursor;
     // pictures and recordings that other devices added
     const missing = [];
@@ -253,6 +269,15 @@ window.InkwellSync = function InkwellSync(host) {
     if (fu > st.foldersSynced) {
       await upload('folders.json', new Blob([JSON.stringify({ list: host.folders(), updated: fu })], { type: 'application/json' }));
       st.foldersSynced = fu;
+    }
+    // settings never changed here count as time 0; they are sent only if Drive has none yet,
+    // so a new device doesn't replace the settings the other devices already share
+    let su = host.settingsUpdated();
+    if (su > st.settingsSynced || (!st.settingsSynced && !st.ids['settings.json'])) {
+      su = su || 1;
+      await upload('settings.json', new Blob([JSON.stringify({ data: host.settings(), updated: su })], { type: 'application/json' }));
+      st.settingsSynced = su;
+      if (host.settingsUpdated() < su) host.settingsSent(su);
     }
     st.last = Date.now();
     await saveState();

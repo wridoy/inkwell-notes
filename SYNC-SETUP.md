@@ -49,6 +49,11 @@ changed on two devices while offline, both versions are kept.
   If you keep writing for more than an hour, the dot turns red. Tap it and choose
   **Sign in again**; usually no password is needed. Your notes are safe on the
   device the whole time and sync as soon as you sign in.
+- Your pen, highlighter and other tool settings, your colour swatches and saved favourite
+  pens sync too. The last change wins.
+  A few settings belong to each device and stay there: **Draw with pen only**, zoom lock,
+  and which note or tool is open.
+  A device you connect for the first time takes the settings your other devices already share.
 - The Client ID and sign-in are stored only on your devices, never in the app's code on GitHub.
 
 # Handwritten maths

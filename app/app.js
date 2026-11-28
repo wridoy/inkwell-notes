@@ -180,20 +180,41 @@
     };
   })();
 
+  // settings that follow the user to other devices through Drive sync; the rest (open note,
+  // current tool, pen-only, zoom lock, folder view…) belong to this device
+  const SYNCED_PREFS = ['colors', 'widths', 'straighten', 'textStyle', 'fill', 'snap', 'eraseMode', 'penType', 'lineStyle',
+    'restylePen', 'restyleStyle', 'hlOpacity', 'hlTip', 'favPens', 'eraseHlOnly', 'lassoMode', 'lassoPartial', 'eraseTapeOnly',
+    'fitText', 'tapeKind', 'tapePattern', 'recent', 'shape', 'sort'];
   const prefs = (() => {
     let p = {};
     try { p = JSON.parse(localStorage.getItem('inkwell-prefs') || '{}') || {}; } catch (e) { p = {}; }
-    return {
+    const save = () => { try { localStorage.setItem('inkwell-prefs', JSON.stringify(p)); } catch (e) { /* private mode */ } };
+    const api = {
       get: (k, d) => (k in p ? p[k] : d),
-      set: (k, v) => { p[k] = v; try { localStorage.setItem('inkwell-prefs', JSON.stringify(p)); } catch (e) { /* private mode */ } },
+      // quiet: a tidy-up by the app itself, not the user's change, so it doesn't win over other devices
+      set: (k, v, quiet) => {
+        p[k] = v;
+        if (!quiet && SYNCED_PREFS.includes(k)) { p.syncedPrefsAt = Date.now(); if (api.onSyncedChange) api.onSyncedChange(); }
+        save();
+      },
+      // 0 = settings never changed since sync of settings arrived on this device
+      syncedAt: () => p.syncedPrefsAt || 0,
+      synced: () => { const o = {}; SYNCED_PREFS.forEach((k) => { if (k in p) o[k] = p[k]; }); return o; },
+      loadSynced(o, at) {
+        SYNCED_PREFS.forEach((k) => { if (o && k in o) p[k] = o[k]; });
+        p.syncedPrefsAt = at;
+        save();
+      },
+      markSynced(at) { p.syncedPrefsAt = at; save(); },
+      onSyncedChange: null,
     };
+    return api;
   })();
 
   /* ---------------- state ---------------- */
-  const S = {
-    notes: [], folders: ['Personal', 'School', 'Work'], note: null, folder: prefs.get('view', 'folders'), query: '',
-    sort: Object.assign({ by: 'updated', dir: 'desc' }, prefs.get('sort', {})), openFolders: prefs.get('openFolders', {}),
-    tool: prefs.get('tool', 'pen'), shape: prefs.get('shape', 'rect'),
+  // the settings that sync between devices, read from prefs (again when another device changes them)
+  const syncedPrefState = () => ({
+    sort: Object.assign({ by: 'updated', dir: 'desc' }, prefs.get('sort', {})), shape: prefs.get('shape', 'rect'),
     colors: Object.assign({ pen: '#1c2430', highlighter: '#fff176', text: '#1c2430', shape: '#2f6fd0', tape: '#a6d8f0', restyle: '#d1453b' }, prefs.get('colors', {})),
     widths: Object.assign({ pen: 3, highlighter: 16, shape: 3, eraser: 30, tape: 34, restyle: 4 }, prefs.get('widths', {})),
     straighten: Object.assign({ pen: false, highlighter: false, tape: false }, prefs.get('straighten', {})),
@@ -204,7 +225,12 @@
     hlOpacity: prefs.get('hlOpacity', 45), hlTip: prefs.get('hlTip', 'chisel'), favPens: prefs.get('favPens', []),
     eraseHlOnly: prefs.get('eraseHlOnly', false), lassoMode: prefs.get('lassoMode', 'lasso'), lassoPartial: prefs.get('lassoPartial', false),
     eraseTapeOnly: prefs.get('eraseTapeOnly', false), fitText: Object.assign({ highlighter: false, tape: false }, prefs.get('fitText', {})),
-    tapeKind: prefs.get('tapeKind', 'pattern'), tapePattern: prefs.get('tapePattern', 0), zoomLock: prefs.get('zoomLock', false),
+    tapeKind: prefs.get('tapeKind', 'pattern'), tapePattern: prefs.get('tapePattern', 0),
+  });
+  const S = {
+    notes: [], folders: ['Personal', 'School', 'Work'], note: null, folder: prefs.get('view', 'folders'), query: '',
+    openFolders: prefs.get('openFolders', {}), tool: prefs.get('tool', 'pen'), zoomLock: prefs.get('zoomLock', false),
+    ...syncedPrefState(),
     penOnly: prefs.get('penOnly', false), penSeen: prefs.get('penSeen', false),
     panelOpen: false, reading: false,
     zoom: 1, autoFit: true, sel: [], selCards: [], undo: [], redo: [], storageOk: true,
@@ -3901,10 +3927,11 @@
   const railSep = () => { const d = document.createElement('div'); d.className = 'rail-sep'; return d; };
   const COLOR_TOOLS = ['pen', 'highlighter', 'text', 'shape', 'tape', 'restyle'];
   const colorToolOf = () => (COLOR_TOOLS.includes(S.tool) ? S.tool : S.tool === 'select' ? 'select' : 'pen');
-  S.recent = Object.assign({
+  const recentFromPrefs = () => Object.assign({
     pen: ['#1c2430', '#d1453b', '#2f6fd0', '#2e9d57', '#f2b01e'],
     highlighter: ['#fff176', '#b9f6ca', '#80d8ff', '#ff9ecb', '#ffcc80'],
   }, prefs.get('recent', {}));
+  S.recent = recentFromPrefs();
   // swatches used to jump to the front when picked; put the default colours back in their slots once
   if (!prefs.get('recentFixed', false)) {
     const DEF = { pen: ['#1c2430', '#d1453b', '#2f6fd0', '#2e9d57', '#f2b01e'], highlighter: ['#fff176', '#b9f6ca', '#80d8ff', '#ff9ecb', '#ffcc80'] };
@@ -3912,7 +3939,7 @@
       const has = (c) => S.recent[k].some((x) => x.toLowerCase() === c);
       S.recent[k] = [...DEF[k].filter(has), ...S.recent[k].filter((x) => !DEF[k].includes(x.toLowerCase()))].slice(0, 5);
     }
-    prefs.set('recent', S.recent);
+    prefs.set('recent', S.recent, true);
     prefs.set('recentFixed', true);
   }
   const recentKey = (tool) => (tool === 'highlighter' ? 'highlighter' : 'pen');
@@ -4837,6 +4864,16 @@
     pref: (k, d) => prefs.get(k, d), prefSet: (k, v) => prefs.set(k, v),
     metaGet: (k) => Store.get('meta', k), metaPut: (v) => Store.put('meta', v), metaDel: (k) => Store.del('meta', k),
     toast, notes: () => S.notes, folders: () => S.folders, foldersUpdated: () => S.foldersUpdated || 0,
+    // settings and colour swatches that follow the user between devices
+    settings: () => prefs.synced(), settingsUpdated: () => prefs.syncedAt(), settingsSent: (at) => prefs.markSynced(at),
+    setSettings(data, updated) {
+      prefs.loadSynced(data, updated);
+      Object.assign(S, syncedPrefState());
+      S.recent = recentFromPrefs();
+      if (editor) styleEditor();
+      updateRail();
+      if (S.panelOpen) { renderPanel(); positionPanel(); }
+    },
     setFolders(list, updated) {
       const set = new Set(list.filter((f) => typeof f === 'string' && f));
       S.notes.forEach((n) => { if (!n.deleted && n.folder) set.add(n.folder); });
@@ -4900,6 +4937,8 @@
       });
     },
   }) : null;
+  // a changed setting or swatch is sent a few seconds later, like a note
+  prefs.onSyncedChange = () => { if (Sync) Sync.noteChanged(); };
   let syncOpenNoteChanged = false;
   function buildSyncMenu(m) {
     const info = Sync.info();
