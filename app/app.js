@@ -244,9 +244,9 @@
   };
   const ctx = el.cv.getContext('2d'); // paper and PDF pages, below math cards
   const ictx = el.ink.getContext('2d'); // handwriting, shapes, text and pictures, above math cards
-  // the pen stroke being written: its own low-latency layer, redrawn on every pen move
-  // without waiting for the next frame or repainting the rest of the page
-  const lctx = el.live.getContext('2d', { desynchronized: true }) || el.live.getContext('2d');
+  // the pen stroke being written: its own layer, redrawn on every pen move without waiting
+  // for the next frame or repainting the rest of the page
+  const lctx = el.live.getContext('2d');
   const mctx = document.createElement('canvas').getContext('2d');
 
   let toastTimer = 0;
@@ -1817,7 +1817,6 @@
   /* ---------------- pointer input ---------------- */
   let action = null;
   let gesture = null;
-  const RAW = 'onpointerrawupdate' in window;
   const touches = new Map();
   const pagePt = (e) => {
     const r = el.wrap.getBoundingClientRect();
@@ -4944,8 +4943,7 @@
   /* ---------------- wiring ---------------- */
   function wire() {
     el.cv.addEventListener('pointerdown', onDown);
-    el.cv.addEventListener('pointermove', (e) => { if (!(RAW && action && action.fast && e.pointerId === action.pointerId)) onMove(e); });
-    if (RAW) el.cv.addEventListener('pointerrawupdate', (e) => { if (action && action.fast && e.pointerId === action.pointerId) onMove(e); });
+    el.cv.addEventListener('pointermove', onMove);
     el.cv.addEventListener('pointerup', onUp);
     el.cv.addEventListener('pointercancel', onCancel);
     el.cv.addEventListener('lostpointercapture', (e) => { if (action && e.pointerId === action.pointerId && e.pointerType !== 'mouse') onCancel(e); });
