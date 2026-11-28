@@ -184,7 +184,7 @@
   // current tool, pen-only, zoom lock, folder view…) belong to this device
   const SYNCED_PREFS = ['colors', 'widths', 'straighten', 'textStyle', 'fill', 'snap', 'eraseMode', 'penType', 'lineStyle',
     'restylePen', 'restyleStyle', 'hlOpacity', 'hlTip', 'favPens', 'eraseHlOnly', 'lassoMode', 'lassoPartial', 'eraseTapeOnly',
-    'fitText', 'tapeKind', 'tapePattern', 'recent', 'shape', 'sort'];
+    'fitText', 'tapeKind', 'tapePattern', 'recent', 'shape', 'sort', 'noteStyle'];
   const prefs = (() => {
     let p = {};
     try { p = JSON.parse(localStorage.getItem('inkwell-prefs') || '{}') || {}; } catch (e) { p = {}; }
@@ -352,9 +352,15 @@
   const dataURLToBlob = (u) => fetch(u).then((r) => r.blob());
 
   /* ---------------- notes ---------------- */
+  // the template and paper colour new notes start with (set from the Style menu)
+  function defaultStyle() {
+    const d = prefs.get('noteStyle', null) || {};
+    return { bg: TEMPLATES.some(([k]) => k === d.bg) ? d.bg : 'lined', paper: PAPERS[d.paper] ? d.paper : 'white' };
+  }
   function makeNote(title, folder) {
+    const st = defaultStyle();
     return {
-      id: uid(), title: title || '', folder: folder || S.folders[0] || 'Personal', bg: 'lined', paper: 'white', height: PAGE_STEP,
+      id: uid(), title: title || '', folder: folder || S.folders[0] || 'Personal', bg: st.bg, paper: st.paper, height: PAGE_STEP,
       objects: [], cards: [], recordings: [], fav: false, trashed: 0, created: now(), updated: now(), deleted: false,
     };
   }
@@ -3840,6 +3846,19 @@
       row.append(b);
     });
     m.append(row);
+    mSep(m);
+    const d = defaultStyle();
+    if (d.bg === S.note.bg && d.paper === S.note.paper) {
+      const t = document.createElement('div');
+      t.className = 'menu-note';
+      t.textContent = 'New notes start with this style.';
+      m.append(t);
+    } else {
+      mItem(m, 'Use this style for new notes', ICON.style, () => {
+        prefs.set('noteStyle', { bg: S.note.bg, paper: S.note.paper });
+        toast('New notes will start with this style.');
+      });
+    }
   }
   function buildInsertMenu(m) {
     mItem(m, 'Picture', ICON.image, () => $('#imageInput').click());
