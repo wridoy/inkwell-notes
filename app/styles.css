@@ -530,7 +530,14 @@ body.lib-open #noteList, body.lib-open .notes-label { display: none; }
 .lib-pickbar .act:disabled { opacity: .4; pointer-events: none; }
 .lib-pickbar .act span { display: inline !important; }
 .lib-pickbar .act { padding: 7px 9px !important; }
-.ncheck { position: absolute; left: 6px; top: 6px; width: 24px; height: 24px; border-radius: 50%; background: rgba(255, 255, 255, .9); box-shadow: inset 0 0 0 2px #9aa6b4, 0 1px 3px rgba(0, 0, 0, .2); pointer-events: none; }
+.ncheck { position: absolute; left: 6px; top: 6px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .9); box-shadow: inset 0 0 0 2px #9aa6b4, 0 1px 3px rgba(0, 0, 0, .2); cursor: pointer; display: none; }
+#library.picking .ncheck { display: block; }
+@media (hover: hover) and (pointer: fine) {
+  /* always clickable with a mouse; it only fades in on hover */
+  .ncheck { display: block; opacity: 0; transition: opacity .12s; }
+  .ntile:hover .ncheck, .ncheck:focus-visible, #library.picking .ncheck { opacity: 1; }
+  .ncheck:hover { box-shadow: inset 0 0 0 2px var(--accent), 0 1px 3px rgba(0, 0, 0, .2); }
+}
 .ntile.picked .ncheck { background: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
 .ntile.picked .ncheck::after { content: ''; position: absolute; left: 8px; top: 4px; width: 6px; height: 11px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
 .ntile.picked .thumb { outline: 3px solid var(--accent); outline-offset: 2px; }

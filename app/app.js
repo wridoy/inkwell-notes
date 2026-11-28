@@ -273,12 +273,14 @@
     saveTimers.set(note.id, setTimeout(() => { saveTimers.delete(note.id); writeNote(note); }, 350));
   }
   function flushSaves() {
+    const writes = [];
     for (const [id, t] of saveTimers) {
       clearTimeout(t);
       saveTimers.delete(id);
       const n = S.notes.find((x) => x.id === id);
-      if (n) writeNote(n);
+      if (n) writes.push(writeNote(n));
     }
+    return Promise.all(writes);
   }
   function persistFolders() {
     S.foldersUpdated = now();
@@ -710,13 +712,20 @@
     if (cached && cached.key === thumbKey(n)) $('img', t).src = cached.url;
     const more = iconBtn('nmore dots-icon', 'Note options', ICON.more, () => openMenu(more, (m) => noteMenu(m, n)));
     $('.thumb', t).append(more);
-    if (picking) {
-      const ck = document.createElement('span');
-      ck.className = 'ncheck';
-      ck.setAttribute('aria-hidden', 'true');
-      $('.thumb', t).append(ck);
-      t.setAttribute('aria-pressed', String(picked.has(n.id)));
-    }
+    // the round check: always shown while picking; with a mouse it appears on hover and starts picking
+    const ck = document.createElement('button');
+    ck.className = 'ncheck';
+    ck.title = picking ? '' : 'Select';
+    ck.setAttribute('aria-label', picked.has(n.id) ? 'Deselect note' : 'Select note');
+    ck.tabIndex = picking ? -1 : 0;
+    ck.onclick = (e) => {
+      e.stopPropagation();
+      if (!picking) { setPicking(true, n); return; }
+      if (picked.has(n.id)) picked.delete(n.id); else picked.add(n.id);
+      renderLibrary();
+    };
+    $('.thumb', t).append(ck);
+    if (picking) t.setAttribute('aria-pressed', String(picked.has(n.id)));
     const open = () => { if (n.trashed) { openMenu(more, (m) => noteMenu(m, n)); return; } openNote(n); };
     const flip = () => { if (picked.has(n.id)) picked.delete(n.id); else picked.add(n.id); renderLibrary(); };
     let held = false, holdTimer = 0, hx = 0, hy = 0;
@@ -1436,7 +1445,26 @@
         c.fillStyle = th.dot;
         for (let y = top + Math.ceil(Math.max(0, ya - top) / g) * g; y <= yb; y += g) for (let x = Math.floor(vx / g) * g; x <= x1; x += g) c.fillRect(x - s / 2, y - s / 2, s, s);
       }
-      if (p > 0 && top >= vy && top <= y1) {
+      if (p > 0 && c.canvas === el.cv && top >= vy - 30 && top <= y1 + 30) {
+        // on screen: a clear gap between sheets with the next page's number; exports keep the plain line
+        const z = S.zoom, gap = 8 / z, ink = th.dark ? 'rgba(255,255,255,.42)' : 'rgba(40,52,70,.5)';
+        c.fillStyle = th.dark ? 'rgba(255,255,255,.10)' : 'rgba(40,52,70,.13)';
+        c.fillRect(0, top - gap / 2, PAGE_W, gap);
+        c.strokeStyle = ink;
+        c.lineWidth = 1.5 / z;
+        c.beginPath();
+        c.moveTo(0, top - gap / 2); c.lineTo(PAGE_W, top - gap / 2);
+        c.moveTo(0, top + gap / 2); c.lineTo(PAGE_W, top + gap / 2);
+        c.stroke();
+        c.fillStyle = ink;
+        c.font = `600 ${12 / z}px system-ui, sans-serif`;
+        c.textAlign = 'right';
+        c.textBaseline = 'top';
+        c.fillText(`Page ${p + 1}`, PAGE_W - 12 / z, top + gap / 2 + 5 / z);
+        c.textAlign = 'left';
+        c.textBaseline = 'alphabetic';
+        c.lineWidth = lw;
+      } else if (p > 0 && top >= vy && top <= y1) {
         c.strokeStyle = th.brk;
         c.lineWidth = lw;
         c.setLineDash([6 * lw, 6 * lw]);
@@ -2119,7 +2147,11 @@
       touches.delete(e.pointerId);
       if (gesture && touches.size === 0) endGesture();
     }
-    if (action && e.pointerId === action.pointerId) cancelAction();
+    if (action && e.pointerId === action.pointerId) {
+      const a = action;
+      if (a.pen && a.live && a.live.type === 'stroke' && a.live.pts.length > 2) onUp(e);
+      else cancelAction();
+    }
   }
   function cancelAction() {
     const a = action;
@@ -5278,9 +5310,22 @@
       // an installed app often just resumes instead of reloading, so look for a new version
       // whenever it comes back to the front, and switch to it once nothing is being drawn or typed
       const hadController = !!navigator.serviceWorker.controller;
-      let pendingReload = false;
-      const reloadNow = () => { flushSaves(); setTimeout(() => location.reload(), 400); };
-      const tryReload = () => { if (pendingReload && !action && !editor) reloadNow(); };
+      let pendingReload = false, idleTimer = 0, reloading = false;
+      const reloadNow = async () => {
+        if (reloading) return;
+        reloading = true;
+        if (!document.hidden) toast('Updating Inkwell…', 1500);
+        // wait for every note to be written (up to 4 s) so nothing just drawn is lost
+        await Promise.race([flushSaves().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
+        location.reload();
+      };
+      const tryReload = () => {
+        if (!pendingReload) return;
+        if (action || editor || saveTimers.size) { armIdle(); return; }
+        reloadNow();
+      };
+      // reload only after 5 s with no pen, touch or typing
+      const armIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(tryReload, 5000); };
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
         const check = () => reg.update().catch(() => {});
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); else tryReload(); });
@@ -5289,8 +5334,9 @@
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!hadController || pendingReload) return;
         pendingReload = true;
-        if (document.hidden || (!action && !editor)) { toast('Updating Inkwell…', 1500); reloadNow(); }
-        else document.addEventListener('pointerup', () => setTimeout(tryReload, 300));
+        if (document.hidden) { tryReload(); return; }
+        ['pointerdown', 'pointermove', 'keydown'].forEach((ev) => document.addEventListener(ev, () => { if (!reloading) armIdle(); }, { capture: true, passive: true }));
+        armIdle();
       });
     }
   }
