@@ -587,9 +587,19 @@
 
   /* ---------------- library (home screen: folders and note thumbnails) ---------------- */
   let libOpen = false;
+  // picking several notes on the home screen: long-press, Ctrl/Shift-click, or the Select button
+  let picking = false, pickView = null;
+  const picked = new Set();
+  function setPicking(on, first) {
+    picking = on;
+    picked.clear();
+    if (on && first) picked.add(first.id);
+    renderLibrary();
+  }
   function setLibrary(on) {
     if (on === libOpen) { if (on) renderLibrary(); return; }
     libOpen = on;
+    if (!on) { picking = false; picked.clear(); }
     document.body.classList.toggle('lib-open', on);
     closeMenu();
     if (on) {
@@ -631,6 +641,9 @@
     $('#libCreate').hidden = v === 'trash';
     $('#libImport').hidden = v === 'trash';
     $('#libBack').hidden = !S.note;
+    if (pickView !== v) { picking = false; picked.clear(); pickView = v; }
+    $('#libSelect').hidden = picking || !visibleNotes().length;
+    $('#library').classList.toggle('picking', picking);
     $('#libSortLabel').textContent = SORTS.find((s) => s[0] === S.sort.by)[1];
     const dir = $('#libDir');
     dir.innerHTML = svg(S.sort.dir === 'asc' ? ICON.up : ICON.down);
@@ -670,7 +683,10 @@
     const grid = $('#libGrid');
     grid.innerHTML = '';
     const list = visibleNotes();
+    const ids = new Set(list.map((n) => n.id));
+    [...picked].forEach((id) => { if (!ids.has(id)) picked.delete(id); });
     list.forEach((n) => grid.append(noteTile(n)));
+    renderPickBar(list);
     const empty = $('#libEmpty');
     empty.hidden = !!(list.length || tiles.length);
     empty.textContent = q ? 'No notes match your search.'
@@ -682,7 +698,7 @@
   }
   function noteTile(n) {
     const t = document.createElement('div');
-    t.className = 'ntile' + (S.note === n ? ' current' : '');
+    t.className = 'ntile' + (S.note === n && !picking ? ' current' : '') + (picked.has(n.id) ? ' picked' : '');
     t.tabIndex = 0;
     t.setAttribute('role', 'button');
     t.dataset.id = n.id;
@@ -694,10 +710,37 @@
     if (cached && cached.key === thumbKey(n)) $('img', t).src = cached.url;
     const more = iconBtn('nmore dots-icon', 'Note options', ICON.more, () => openMenu(more, (m) => noteMenu(m, n)));
     $('.thumb', t).append(more);
+    if (picking) {
+      const ck = document.createElement('span');
+      ck.className = 'ncheck';
+      ck.setAttribute('aria-hidden', 'true');
+      $('.thumb', t).append(ck);
+      t.setAttribute('aria-pressed', String(picked.has(n.id)));
+    }
     const open = () => { if (n.trashed) { openMenu(more, (m) => noteMenu(m, n)); return; } openNote(n); };
-    t.onclick = open;
-    t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
-    t.oncontextmenu = (e) => { e.preventDefault(); openMenu(more, (m) => noteMenu(m, n)); };
+    const flip = () => { if (picked.has(n.id)) picked.delete(n.id); else picked.add(n.id); renderLibrary(); };
+    let held = false, holdTimer = 0, hx = 0, hy = 0;
+    t.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' || picking) return;
+      held = false;
+      hx = e.clientX; hy = e.clientY;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(() => {
+        held = true;
+        try { if (navigator.vibrate) navigator.vibrate(15); } catch (_) { /* ignore */ }
+        setPicking(true, n);
+      }, 500);
+    });
+    t.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - hx, e.clientY - hy) > 10) clearTimeout(holdTimer); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => t.addEventListener(ev, () => clearTimeout(holdTimer)));
+    t.onclick = (e) => {
+      if (held) { held = false; return; } // the long-press already picked it
+      if (picking) { flip(); return; }
+      if (e.ctrlKey || e.metaKey || e.shiftKey) { setPicking(true, n); return; }
+      open();
+    };
+    t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (picking) flip(); else open(); } };
+    t.oncontextmenu = (e) => { e.preventDefault(); if (picking || held) return; openMenu(more, (m) => noteMenu(m, n)); };
     return t;
   }
   function folderMenu(m, f) {
@@ -710,10 +753,12 @@
   function noteMenu(m, n) {
     if (n.trashed) {
       mItem(m, 'Restore', ICON.undo, () => libRestore(n));
+      mItem(m, 'Select', ICON.listCheck, () => setPicking(true, n));
       mItem(m, 'Delete forever', ICON.trash, () => libPurge(n), 'danger');
       return;
     }
     mItem(m, 'Open', ICON.file, () => openNote(n));
+    mItem(m, 'Select', ICON.listCheck, () => setPicking(true, n));
     mItem(m, n.fav ? 'Remove from favourites' : 'Add to favourites', ICON.star, () => { n.fav = !n.fav; n.updated = now(); persist(n); if (n === S.note) updateFav(); renderSidebar(); });
     mItem(m, 'Rename', ICON.edit, () => {
       const t = prompt('Rename note', n.title || '');
@@ -728,25 +773,93 @@
     mSep(m);
     mItem(m, 'Move to Trash', ICON.trash, () => libTrash(n), 'danger');
   }
-  function openMoveMenu(n) {
-    const anchor = $(`.ntile[data-id="${n.id}"] .nmore`) || $('#libTitle');
+  function openMoveMenu(n, anchorEl) {
+    const list = Array.isArray(n) ? n : [n];
+    const anchor = anchorEl || $(`.ntile[data-id="${list[0].id}"] .nmore`) || $('#libTitle');
     openMenu(anchor, (m) => {
-      mLabel(m, `Move "${n.title || 'Untitled'}" to`);
+      mLabel(m, list.length > 1 ? `Move ${list.length} notes to` : `Move "${list[0].title || 'Untitled'}" to`);
       const set = folderSet();
       const walk = (parent, depth) => childFolders(parent, set).forEach((f) => {
         const b = mItem(m, leafOf(f), ICON.folder, () => {
-          n.folder = f;
-          n.updated = now();
-          persist(n);
+          list.forEach((x) => { x.folder = f; x.updated = now(); persist(x); });
+          if (list.length > 1) { picking = false; picked.clear(); }
           renderSidebar();
-          toast(`Moved to ${folderLabel(f)}`);
-        }, n.folder === f ? 'on' : '');
+          toast(`Moved ${list.length > 1 ? list.length + ' notes ' : ''}to ${folderLabel(f)}`);
+        }, list.every((x) => x.folder === f) ? 'on' : '');
         b.style.paddingLeft = 10 + depth * 16 + 'px';
         walk(f, depth + 1);
       });
       walk('', 0);
       m.classList.add('scroll');
     });
+  }
+  function renderPickBar(list) {
+    const bar = $('#libPickBar'), lm = $('#libMenu');
+    bar.hidden = !picking;
+    lm.innerHTML = svg(picking ? ICON.chevL : ICON.menu);
+    lm.title = picking ? 'Stop selecting' : 'Folders list';
+    lm.setAttribute('aria-label', lm.title);
+    if (!picking) return;
+    bar.innerHTML = '';
+    const sel = list.filter((n) => picked.has(n.id));
+    $('#libTitle').textContent = sel.length ? `${sel.length} selected` : 'Select notes';
+    const btn = (label, icon, fn, cls) => {
+      const b = document.createElement('button');
+      b.className = 'act' + (cls ? ' ' + cls : '');
+      b.innerHTML = svg(icon) + '<span></span>';
+      $('span', b).textContent = label;
+      b.title = label;
+      b.disabled = fn == null;
+      if (fn) b.onclick = fn;
+      bar.append(b);
+      return b;
+    };
+    const all = sel.length === list.length;
+    btn(all ? 'Select none' : 'Select all', ICON.listCheck, () => { if (all) picked.clear(); else list.forEach((n) => picked.add(n.id)); renderLibrary(); });
+    const none = !sel.length;
+    if (S.folder === 'trash') {
+      btn('Restore', ICON.undo, none ? null : () => restoreMany(sel));
+      btn('Delete forever', ICON.trash, none ? null : () => purgeMany(sel), 'danger-act');
+      return;
+    }
+    const allFav = !none && sel.every((n) => n.fav);
+    btn(allFav ? 'Unfavourite' : 'Favourite', ICON.star, none ? null : () => {
+      sel.forEach((n) => { n.fav = !allFav; n.updated = now(); persist(n); });
+      if (sel.includes(S.note)) updateFav();
+      renderSidebar();
+      toast(allFav ? 'Removed from favourites' : 'Added to favourites');
+    });
+    const mv = btn('Move', ICON.folder, none ? null : () => openMoveMenu(sel, mv));
+    btn('Trash', ICON.trash, none ? null : () => trashMany(sel), 'danger-act');
+  }
+  function trashMany(list) {
+    for (const n of list) {
+      if (rec && rec.note === n) rec.mr.stop();
+      n.trashed = now();
+      n.updated = now();
+      persist(n);
+    }
+    picking = false;
+    picked.clear();
+    if (list.includes(S.note)) { openNextAfter(S.note); setLibrary(true); }
+    renderSidebar();
+    toast(`${list.length} note(s) moved to Trash`, 2500);
+  }
+  function restoreMany(list) {
+    list.forEach((n) => { n.trashed = 0; n.updated = now(); persist(n); });
+    picking = false;
+    picked.clear();
+    renderSidebar();
+    toast(`${list.length} note(s) restored`);
+  }
+  async function purgeMany(list) {
+    if (!confirm(`Delete ${list.length} note(s) forever? This can't be undone.`)) return;
+    for (const n of list) await purgeNote(n, false);
+    picking = false;
+    picked.clear();
+    setLibrary(true);
+    renderSidebar();
+    toast(`${list.length} note(s) deleted`);
   }
   // Trash and restore from the library without leaving it
   function libTrash(n) {
@@ -4771,8 +4884,10 @@
     ico('#libImport', ICON.pdf);
     ico('#libNewFolder', ICON.folder);
     ico('#libEmptyTrash', ICON.trash);
+    ico('#libSelect', ICON.listCheck);
+    $('#libSelect').onclick = () => setPicking(true);
     ico('#libSort', ICON.sortIcon);
-    $('#libMenu').onclick = () => setSidebar(document.body.classList.contains('side-collapsed'));
+    $('#libMenu').onclick = () => { if (picking) setPicking(false); else setSidebar(document.body.classList.contains('side-collapsed')); };
     $('#homeBtn').onclick = () => setLibrary(true);
     $('#libBack').onclick = () => setLibrary(false);
     $('#libCreate').onclick = newNote;
@@ -4893,7 +5008,7 @@
     });
     document.addEventListener('keydown', (e) => {
       const t = e.target;
-      if (e.key === 'Escape') { closeMenu(); if (!$('#sorter').hidden) closeSorter(); }
+      if (e.key === 'Escape') { const hadMenu = !menu.hidden; closeMenu(); if (!$('#sorter').hidden) closeSorter(); if (libOpen && picking && !hadMenu) setPicking(false); }
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       if (libOpen) return;
       const k = e.key.toLowerCase();
